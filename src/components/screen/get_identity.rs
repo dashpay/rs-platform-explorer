@@ -1,6 +1,8 @@
+//! Get identity screen
+
 //! Identity screen module.
 
-use tui_realm_stdlib::{Paragraph, Table};
+use tui_realm_stdlib::{Paragraph, Table, Textarea};
 use tuirealm::{
     command::{Cmd, CmdResult},
     event::{Key, KeyEvent, KeyModifiers},
@@ -14,50 +16,59 @@ use crate::{
 };
 
 #[derive(MockComponent)]
-pub(crate) struct IdentityScreen {
-    component: Paragraph,
+pub(crate) struct GetIdentityScreen {
+    component: Textarea,
 }
 
-impl IdentityScreen {
+impl GetIdentityScreen {
     pub(crate) fn new() -> Self {
-        IdentityScreen {
-            component: Paragraph::default()
-                .text([TextSpan::new("Identity management commands")].as_ref()),
+        GetIdentityScreen {
+            component: Textarea::default(),
         }
     }
 }
 
-impl Component<Message, NoUserEvent> for IdentityScreen {
+impl Component<Message, NoUserEvent> for GetIdentityScreen {
     fn on(&mut self, _ev: Event<NoUserEvent>) -> Option<Message> {
         None
     }
 }
 
 #[derive(MockComponent)]
-pub(crate) struct IdentityScreenCommands {
+pub(crate) struct GetIdentityScreenCommands {
     component: CommandPallet,
 }
 
-impl IdentityScreenCommands {
+impl GetIdentityScreenCommands {
     pub(crate) fn new() -> Self {
-        IdentityScreenCommands {
+        GetIdentityScreenCommands {
             component: CommandPallet::new(vec![
                 CommandPalletKey {
                     key: 'q',
-                    description: "Back to Main",
+                    description: "Back to Identity screen",
                     key_type: KeyType::Command,
                 },
                 CommandPalletKey {
-                    key: 'g',
-                    description: "Get Identity",
+                    key: 'i',
+                    description: "Get by ID",
                     key_type: KeyType::Command,
+                },
+                CommandPalletKey {
+                    key: 'h',
+                    description: "Get by public key hashes",
+                    key_type: KeyType::Command,
+                },
+                CommandPalletKey {
+                    key: 'p',
+                    description: "with proof",
+                    key_type: KeyType::Toggle,
                 },
             ]),
         }
     }
 }
 
-impl Component<Message, NoUserEvent> for IdentityScreenCommands {
+impl Component<Message, NoUserEvent> for GetIdentityScreenCommands {
     fn on(&mut self, ev: Event<NoUserEvent>) -> Option<Message> {
         match ev {
             Event::Keyboard(KeyEvent {
@@ -65,9 +76,12 @@ impl Component<Message, NoUserEvent> for IdentityScreenCommands {
                 modifiers: KeyModifiers::NONE,
             }) => Some(Message::PrevScreen),
             Event::Keyboard(KeyEvent {
-                code: Key::Char('g'),
+                code: Key::Char(c),
                 modifiers: KeyModifiers::NONE,
-            }) => Some(Message::NextScreen(Screen::GetIdentity)),
+            }) => {
+                self.perform(Cmd::Type(c));
+                Some(Message::ToggleFlag)
+            }
             _ => None,
         }
     }

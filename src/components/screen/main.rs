@@ -8,7 +8,10 @@ use tuirealm::{
     Component, Event, MockComponent, NoUserEvent,
 };
 
-use crate::app::{Message, Screen};
+use crate::{
+    app::{Message, Screen},
+    mock_components::{CommandPallet, CommandPalletKey, KeyType},
+};
 
 #[derive(MockComponent)]
 pub(crate) struct MainScreen {
@@ -21,8 +24,12 @@ impl MainScreen {
             component: Paragraph::default().text(
                 [
                     TextSpan::new("Welcome to Platform TUI!"),
-                    TextSpan::new("Use keys listed in the section below to switch screens and/or toggle flags."),
-                    TextSpan::new("Some of them require signature and are disabled until an identity key is loaded.")
+                    TextSpan::new(""),
+                    TextSpan::new("Use keys listed in the section below to switch screens and execute commands."),
+                    TextSpan::new("Some of them require signature and are disabled until an identity key is loaded."),
+                    TextSpan::new(""),
+                    TextSpan::new("Italics are used to mark flags.").italic(),
+                    TextSpan::new("Bold italics are flags that are enabled.").italic().bold(),
                 ]
                 .as_ref(),
             ),
@@ -38,16 +45,24 @@ impl Component<Message, NoUserEvent> for MainScreen {
 
 #[derive(MockComponent)]
 pub(crate) struct MainScreenCommands {
-    component: Table,
+    component: CommandPallet,
 }
 
 impl MainScreenCommands {
     pub(crate) fn new() -> Self {
         MainScreenCommands {
-            component: Table::default().table(vec![vec![
-                TextSpan::new("q - Quit"),
-                TextSpan::new("i - Identities"),
-            ]]),
+            component: CommandPallet::new(vec![
+                CommandPalletKey {
+                    key: 'q',
+                    description: "Quit",
+                    key_type: KeyType::Command,
+                },
+                CommandPalletKey {
+                    key: 'i',
+                    description: "Identities",
+                    key_type: KeyType::Command,
+                },
+            ]),
         }
     }
 }

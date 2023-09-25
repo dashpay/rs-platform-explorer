@@ -15,6 +15,7 @@ use crate::components::*;
 pub(super) enum Screen {
     Main,
     Identity,
+    GetIdentity,
 }
 
 /// Component identifiers, required to triggers screen switch which involves mounting and
@@ -38,6 +39,7 @@ pub(super) enum Message {
     AppClose,
     NextScreen(Screen),
     PrevScreen,
+    ToggleFlag,
 }
 
 pub(super) struct Model {
@@ -157,6 +159,22 @@ impl Model {
                     )
                     .expect("unable to remount screen");
             }
+            Screen::GetIdentity => {
+                self.app
+                    .remount(
+                        ComponentId::Screen,
+                        Box::new(GetIdentityScreen::new()),
+                        Vec::new(),
+                    )
+                    .expect("unable to remount screen");
+                self.app
+                    .remount(
+                        ComponentId::CommandPallet,
+                        Box::new(GetIdentityScreenCommands::new()),
+                        Vec::new(),
+                    )
+                    .expect("unable to remount screen");
+            }
         }
         self.app
             .attr(
@@ -204,6 +222,8 @@ impl Update<Message> for Model {
                     self.set_screen(screen);
                     None
                 }
+                // Just redraw
+                Message::ToggleFlag => None,
             }
         } else {
             None

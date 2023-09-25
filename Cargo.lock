@@ -1054,7 +1054,7 @@ dependencies = [
  "getrandom",
  "hex",
  "integer-encoding",
- "itertools 0.10.5",
+ "itertools",
  "json-patch",
  "jsonptr",
  "jsonschema",
@@ -1104,7 +1104,7 @@ dependencies = [
  "indexmap 1.9.3",
  "integer-encoding",
  "intmap",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "mockall",
  "moka",
@@ -1143,7 +1143,7 @@ dependencies = [
  "file-rotate",
  "hex",
  "indexmap 1.9.3",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "metrics",
  "metrics-exporter-prometheus",
@@ -1638,7 +1638,7 @@ dependencies = [
  "indexmap 1.9.3",
  "integer-encoding",
  "intmap",
- "itertools 0.10.5",
+ "itertools",
  "nohash-hasher",
  "serde",
  "tempfile",
@@ -1709,7 +1709,7 @@ version = "1.0.0-rc.1"
 source = "git+https://github.com/dashpay/grovedb?rev=8380363e3c473c015b2bf70fcba60b9f47c9df35#8380363e3c473c015b2bf70fcba60b9f47c9df35"
 dependencies = [
  "hex",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -2008,15 +2008,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
 dependencies = [
  "either",
 ]
@@ -2843,7 +2834,7 @@ checksum = "59230a63c37f3e18569bdb90e4a89cbf5bf8b06fea0b84e65ea10cc4df47addd"
 dependencies = [
  "difflib",
  "float-cmp",
- "itertools 0.10.5",
+ "itertools",
  "normalize-line-endings",
  "predicates-core",
  "regex",
@@ -2931,7 +2922,7 @@ checksum = "119533552c9a7ffacc21e099c24a0ac8bb19c2a2a3f363de84cd9b844feab270"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "log",
  "multimap",
@@ -2952,7 +2943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -3218,7 +3209,6 @@ dependencies = [
 name = "rs-platform-explorer"
 version = "0.1.0"
 dependencies = [
- "itertools 0.11.0",
  "rs-sdk",
  "strum 0.25.0",
  "tui-realm-stdlib",

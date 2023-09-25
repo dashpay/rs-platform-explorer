@@ -20,9 +20,9 @@ pub(crate) enum KeyType {
 }
 
 pub(crate) struct CommandPalletKey {
-    key: char,
-    description: &'static str,
-    key_type: KeyType,
+    pub key: char,
+    pub description: &'static str,
+    pub key_type: KeyType,
 }
 
 pub(crate) struct CommandPallet {
@@ -32,7 +32,7 @@ pub(crate) struct CommandPallet {
 
 impl CommandPallet {
     pub(crate) fn new(keys: Vec<CommandPalletKey>) -> Self {
-        let mut state_map = keys
+        let state_map = keys
             .iter()
             .filter(|k| k.key_type == KeyType::Toggle)
             .map(|k| (k.key.to_string(), StateValue::Bool(false)))
@@ -57,6 +57,11 @@ impl MockComponent for CommandPallet {
             let mut row_vec = Vec::new();
             for key in row {
                 let mut span = TextSpan::new(format!("{} - {}", key.key, key.description));
+
+                if matches!(key.key_type, KeyType::Toggle) {
+                    span = span.italic();
+                }
+
                 span = if matches!(
                     toggles.get(key.key.to_string().as_str()),
                     Some(StateValue::Bool(true))
@@ -75,31 +80,30 @@ impl MockComponent for CommandPallet {
     }
 
     fn query(&self, attr: Attribute) -> Option<AttrValue> {
-        todo!()
+        None
     }
 
-    fn attr(&mut self, attr: Attribute, value: AttrValue) {
-        todo!()
-    }
+    fn attr(&mut self, attr: Attribute, value: AttrValue) {}
 
     fn state(&self) -> State {
-        todo!()
+        self.state.clone()
     }
 
     fn perform(&mut self, cmd: Cmd) -> CmdResult {
+        let toggles = match &mut self.state {
+            State::Map(hm) => hm,
+            _ => unreachable!("State for `CommandPallet` is always a map"),
+        };
         match cmd {
-            Cmd::Type(c) => todo!(),
-            Cmd::Move(_) => todo!(),
-            Cmd::Scroll(_) => todo!(),
-            Cmd::GoTo(_) => todo!(),
-            Cmd::Submit => todo!(),
-            Cmd::Delete => todo!(),
-            Cmd::Cancel => todo!(),
-            Cmd::Toggle => todo!(),
-            Cmd::Change => todo!(),
-            Cmd::Tick => todo!(),
-            Cmd::Custom(_) => todo!(),
-            Cmd::None => todo!(),
+            Cmd::Type(c) => {
+                if let Some(StateValue::Bool(flag)) = toggles.get_mut(c.to_string().as_str()) {
+                    *flag = !*flag;
+                    CmdResult::Changed(self.state.clone())
+                } else {
+                    CmdResult::None
+                }
+            }
+            _ => CmdResult::None,
         }
     }
 }
