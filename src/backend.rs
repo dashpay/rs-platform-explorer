@@ -1,15 +1,15 @@
 //! Application backend.
 //! This includes all logic unrelated to UI.
 
-mod contracts;
-pub(crate) mod documents;
-mod error;
-pub(crate) mod identities;
-pub(crate) mod insight;
-pub(crate) mod platform_info;
+pub mod contracts;
+pub mod documents;
+pub mod error;
+pub mod identities;
+pub mod insight;
+pub mod platform_info;
 mod state;
 mod strategies;
-mod wallet;
+pub mod wallet;
 
 use std::{
     collections::BTreeMap,
@@ -48,7 +48,7 @@ use crate::{
 /// things decoupled and for future UI/UX improvements it returns a [Task]
 /// instead.
 #[derive(Clone)]
-pub(crate) enum Task {
+pub enum Task {
     FetchIdentityById(String, bool),
     PlatformInfo(PlatformInfoTask),
     Strategy(StrategyTask),
@@ -61,7 +61,7 @@ pub(crate) enum Task {
 /// A positive task execution result.
 /// Occasionally it's desired to represent data on UI in a structured way, in
 /// that case specific variants are used.
-pub(crate) enum CompletedTaskPayload {
+pub enum CompletedTaskPayload {
     Documents(BTreeMap<Identifier, Option<Document>>),
     DocumentBroadcastResults(Vec<Result<Document, SdkError>>),
     String(String),
@@ -89,7 +89,7 @@ impl Display for CompletedTaskPayload {
 }
 
 /// Any update coming from backend that UI may or may not react to.
-pub(crate) enum BackendEvent<'s> {
+pub enum BackendEvent<'s> {
     TaskCompleted {
         task: Task,
         execution_result: Result<CompletedTaskPayload, String>,
@@ -124,15 +124,15 @@ pub(crate) enum AppStateUpdate<'s> {
 }
 
 /// Application state, dependencies are task execution logic around it.
-pub(crate) struct Backend {
-    sdk: Arc<Sdk>,
+pub struct Backend {
+    pub sdk: Arc<Sdk>,
     app_state: AppState,
     insight: InsightAPIClient,
-    config: Config,
+    pub config: Config,
 }
 
 impl Backend {
-    pub(crate) async fn new(sdk: Arc<Sdk>, insight: InsightAPIClient, config: Config) -> Self {
+    pub async fn new(sdk: Arc<Sdk>, insight: InsightAPIClient, config: Config) -> Self {
         Backend {
             sdk,
             app_state: AppState::load(&insight, &config).await,
@@ -141,11 +141,11 @@ impl Backend {
         }
     }
 
-    pub(crate) fn state(&self) -> &AppState {
+    pub fn state(&self) -> &AppState {
         &self.app_state
     }
 
-    pub(crate) async fn run_task(&self, task: Task) -> BackendEvent {
+    pub async fn run_task(&self, task: Task) -> BackendEvent {
         match task {
             Task::FetchIdentityById(ref base58_id, add_to_known_identities) => {
                 let execution_result =
@@ -229,6 +229,6 @@ fn stringify_result_keep_item<T: Serialize, E: Display>(
     }
 }
 
-pub(crate) fn as_toml<T: Serialize>(value: &T) -> String {
+pub fn as_toml<T: Serialize>(value: &T) -> String {
     toml::to_string_pretty(&value).unwrap_or("Cannot serialize as TOML".to_owned())
 }

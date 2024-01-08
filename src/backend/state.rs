@@ -45,7 +45,7 @@ pub(super) type KnownContractsMap = BTreeMap<String, DataContract>;
 // moreover single mutex hold during rendering will block unrelated tasks from
 // finishing
 #[derive(Debug)]
-pub(crate) struct AppState {
+pub struct AppState {
     pub loaded_identity: Mutex<Option<Identity>>,
     pub identity_private_keys: Mutex<BTreeMap<(Identifier, KeyID), PrivateKey>>,
     pub loaded_wallet: Mutex<Option<Wallet>>,

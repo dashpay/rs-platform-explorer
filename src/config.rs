@@ -1,11 +1,11 @@
 use std::{path::PathBuf, str::FromStr};
 
 use dash_platform_sdk::sdk::Uri;
-use dpp::dashcore::Network;
+use dpp::dashcore::{Network, PrivateKey};
 use rs_dapi_client::AddressList;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 /// Configuration for platform explorer.
 ///
 /// Content of this configuration is loaded from environment variables or `.env`
@@ -29,6 +29,9 @@ pub struct Config {
     pub insight_api_url: String,
     /// Network name
     pub network: String,
+    /// Optional wallet private key to instantiate the wallet if it's not loaded
+    /// yet
+    pub wallet_private_key: Option<String>,
 }
 
 impl Config {
@@ -67,7 +70,8 @@ impl Config {
             && self.core_rpc_port != 0
             && !self.dapi_addresses.is_empty()
             && Uri::from_str(&self.insight_api_url).is_ok()
-            && Network::from_str(&self.core_network_name()).is_ok()
+            && Network::from_str(self.core_network_name()).is_ok()
+        // TODO: Validate wallet private key
     }
 
     pub fn core_network(&self) -> Network {

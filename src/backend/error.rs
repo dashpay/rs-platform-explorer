@@ -11,7 +11,7 @@ use crate::backend::{
 };
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("error while parsing an identity: {0}")]
     Parsing(#[from] ProtocolError),
     #[error("ID encoding error: {0}")]

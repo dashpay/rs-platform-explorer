@@ -54,7 +54,7 @@ pub(super) async fn fetch_identity_by_b58_id(
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) enum IdentityTask {
+pub enum IdentityTask {
     RegisterIdentity(u64),
     TopUpIdentity(u64),
     WithdrawFromIdentity(u64),

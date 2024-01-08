@@ -1,8 +1,11 @@
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Deref,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use dash_platform_sdk::{
@@ -28,8 +31,13 @@ use dpp::{
 };
 use futures::future::join_all;
 use rand::{prelude::StdRng, Rng, SeedableRng};
+use rs_dapi_client::RequestSettings;
 use simple_signer::signer::SimpleSigner;
-use tokio::{sync::Semaphore, time::Instant};
+use tokio::{
+    sync::{mpsc, Semaphore},
+    time,
+    time::Instant,
+};
 use tracing::Level;
 
 use super::{AppStateUpdate, CompletedTaskPayload};
@@ -506,5 +514,209 @@ impl AppState {
         }
 
         Ok(broadcast_transition_results)
+    }
+
+    pub async fn broadcast_random_documents(
+        &self,
+        sdk: Arc<Sdk>,
+        data_contract: Arc<DataContract>,
+        document_type: Arc<DocumentType>,
+        duration: Duration,
+        concurrent_requests: u16,
+    ) -> Result<(), Error> {
+        tracing::info!(
+            data_contract_id = data_contract.id().to_string(Encoding::Base58),
+            document_type = document_type.name(),
+            "broadcasting simultaneously {} random documents for {} secs",
+            concurrent_requests,
+            duration.as_secs_f32()
+        );
+
+        // Get identity
+
+        let mut loaded_identity = self.loaded_identity.lock().await;
+        let Some(identity) = loaded_identity.as_mut() else {
+            return Err(Error::IdentityTopUp("No identity loaded".to_string()));
+        };
+
+        let identity_id = identity.id();
+
+        // Get identity public key
+
+        let identity_public_key = identity
+            .get_first_public_key_matching(
+                Purpose::AUTHENTICATION,
+                HashSet::from([document_type.security_level_requirement()]),
+                HashSet::from([KeyType::ECDSA_SECP256K1, KeyType::BLS12_381]),
+            )
+            .ok_or(Error::DocumentSigning(
+                "No public key matching security level requirements".to_string(),
+            ))?;
+
+        // Get the private key to sign state transition
+
+        let loaded_identity_private_keys = self.identity_private_keys.lock().await;
+
+        let Some(private_key) =
+            loaded_identity_private_keys.get(&(identity.id(), identity_public_key.id()))
+        else {
+            return Err(Error::IdentityTopUp(format!(
+                "expected private keys, but we only have private keys for {:?}, trying to get \
+                 {:?} : {}",
+                loaded_identity_private_keys
+                    .keys()
+                    .map(|(id, key_id)| (id, key_id))
+                    .collect::<BTreeMap<_, _>>(),
+                identity.id(),
+                identity_public_key.id(),
+            )));
+        };
+
+        let private_key = *private_key;
+
+        // Created time for the documents
+
+        let created_at_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+
+        // Generate and broadcast N documents
+
+        let permits = Arc::new(Semaphore::new(concurrent_requests as usize));
+
+        let oks = Arc::new(AtomicUsize::new(0)); // Atomic counter for tasks
+        let errs = Arc::new(AtomicUsize::new(0)); // Atomic counter for tasks
+        let pending = Arc::new(AtomicUsize::new(0));
+        let last_report = Arc::new(AtomicU64::new(0));
+
+        let start_time = Instant::now();
+
+        let mut tasks = Vec::new();
+
+        let settings = RequestSettings {
+            connect_timeout: None,
+            timeout: Some(Duration::from_secs(30)),
+            retries: Some(0),
+        };
+
+        while start_time.elapsed() < duration {
+            // Acquire a permit
+            let permits = Arc::clone(&permits);
+            let permit = permits.acquire_owned().await.unwrap();
+
+            let oks = Arc::clone(&oks);
+            let errs = Arc::clone(&errs);
+            let pending = Arc::clone(&pending);
+            let last_report = Arc::clone(&last_report);
+
+            let sdk = Arc::clone(&sdk);
+            let document_type = Arc::clone(&document_type);
+
+            let identity_public_key = identity_public_key.clone();
+
+            let task = tokio::task::spawn(async move {
+                let mut std_rng = StdRng::from_entropy();
+                let document_state_transition_entropy: [u8; 32] = std_rng.gen();
+
+                // Generate a random document
+
+                let random_document = document_type
+                    .random_document_with_params(
+                        identity_id,
+                        document_state_transition_entropy.into(),
+                        created_at_ms as u64,
+                        DocumentFieldFillType::FillIfNotRequired,
+                        DocumentFieldFillSize::AnyDocumentFillSize,
+                        &mut std_rng,
+                        sdk.version(),
+                    )
+                    .expect("expected a random document");
+
+                // Create a signer
+
+                let mut signer = SimpleSigner::default();
+
+                signer.add_key(identity_public_key.clone(), private_key.to_bytes());
+
+                // Broadcast the document
+
+                tracing::trace!(
+                    "broadcasting document {}",
+                    random_document.id().to_string(Encoding::Base58),
+                );
+
+                pending.fetch_add(1, Ordering::SeqCst);
+
+                let elapsed_secs = start_time.elapsed().as_secs();
+
+                if start_time.elapsed().as_secs() % 10 == 0
+                    && elapsed_secs != last_report.load(Ordering::SeqCst)
+                {
+                    tracing::info!(
+                        "{} secs passed: {} pending, {} successful, {} failed",
+                        elapsed_secs,
+                        pending.load(Ordering::SeqCst),
+                        oks.load(Ordering::SeqCst),
+                        errs.load(Ordering::SeqCst),
+                    );
+                    last_report.swap(elapsed_secs, Ordering::SeqCst);
+                }
+
+                let result = random_document
+                    .put_to_platform_with_settings(
+                        &sdk,
+                        document_type.deref().clone(),
+                        document_state_transition_entropy,
+                        identity_public_key,
+                        &signer,
+                        settings.clone(),
+                    )
+                    .await;
+
+                pending.fetch_sub(1, Ordering::SeqCst);
+
+                match result {
+                    Ok(_) => {
+                        oks.fetch_add(1, Ordering::SeqCst);
+
+                        tracing::trace!(
+                            "document {} successfully broadcast",
+                            random_document.id().to_string(Encoding::Base58),
+                        );
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            ?error,
+                            "failed to broadcast document {}: {}",
+                            random_document.id().to_string(Encoding::Base58),
+                            error
+                        );
+
+                        errs.fetch_add(1, Ordering::SeqCst);
+                    }
+                };
+
+                drop(permit);
+            });
+
+            tasks.push(task)
+        }
+
+        join_all(tasks).await;
+
+        let oks = oks.load(Ordering::SeqCst);
+        let errs = errs.load(Ordering::SeqCst);
+
+        tracing::info!(
+            data_contract_id = data_contract.id().to_string(Encoding::Base58),
+            document_type = document_type.name(),
+            "broadcasting {} random documents during {} secs. successfully: {}, failed: {}, rate: \
+             {} docs/sec",
+            oks + errs,
+            duration.as_secs_f32(),
+            oks,
+            errs,
+            (oks + errs) as f32 / duration.as_secs_f32()
+        );
+
+        Ok(())
     }
 }

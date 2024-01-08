@@ -9,6 +9,7 @@ use dash_platform_sdk::SdkBuilder;
 use dpp::{identity::accessors::IdentityGettersV0, version::PlatformVersion};
 use futures::{future::OptionFuture, select, FutureExt, StreamExt};
 use rs_dapi_client::RequestSettings;
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use tuirealm::event::KeyEvent;
 use ui::IdentityBalance;
@@ -29,12 +30,14 @@ async fn main() {
     // Initialize logger
     let log_file = File::create("explorer.log").expect("create log file");
 
-    let subscriber = tracing_subscriber::fmt::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+    tracing_subscriber::fmt::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
         .with_writer(log_file)
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("can't initialize logging");
+        .init();
 
     // Log panics
     let default_panic_hook = panic::take_hook();

@@ -25,7 +25,7 @@ use super::{AppStateUpdate, BackendEvent, Task};
 use crate::backend::insight::{InsightAPIClient, InsightError};
 
 #[derive(Clone, PartialEq)]
-pub(crate) enum WalletTask {
+pub enum WalletTask {
     AddByPrivateKey(String),
     Refresh,
     CopyAddress,
@@ -105,7 +105,7 @@ pub(super) async fn run_wallet_task<'s>(
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum WalletError {
+pub enum WalletError {
     #[error(transparent)]
     Insight(InsightError),
     #[error("not enough balance")]
