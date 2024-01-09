@@ -191,7 +191,7 @@ async fn broadcast_random_documents<'s>(
 
     let data_contract = Arc::new(data_contract.clone());
     let mut signer = SimpleSigner::default();
-    signer.add_key(identity_public_key.clone(), private_key.to_bytes());
+    signer.add_key(identity_public_key.clone(), private_key.to_vec());
 
     fn put_random_document<'a, 'r>(
         sdk: &'a Sdk,

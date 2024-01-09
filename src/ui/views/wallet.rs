@@ -1,11 +1,14 @@
 //! Screens and forms related to wallet management.
 
+mod add_identity_key;
+
 use tuirealm::{
     event::{Key, KeyEvent, KeyModifiers},
     tui::prelude::{Constraint, Direction, Layout, Rect},
     Frame,
 };
 
+use self::add_identity_key::AddIdentityKeyFormController;
 use crate::{
     backend::{
         identities::IdentityTask, AppState, AppStateUpdate, BackendEvent, Task, Wallet, WalletTask,
@@ -28,10 +31,11 @@ const WALLET_LOADED_COMMANDS: [ScreenCommandKey; 2] = [
     ScreenCommandKey::new("c", "Copy Receive Address"),
 ];
 
-const IDENTITY_LOADED_COMMANDS: [ScreenCommandKey; 3] = [
+const IDENTITY_LOADED_COMMANDS: [ScreenCommandKey; 4] = [
     ScreenCommandKey::new("r", "Identity refresh"),
     ScreenCommandKey::new("w", "Withdraw balance"),
     ScreenCommandKey::new("d", "Copy Identity ID"),
+    ScreenCommandKey::new("k", "Add Identity key"),
 ];
 
 #[memoize::memoize]
@@ -45,25 +49,23 @@ fn join_commands(
 
     if wallet_loaded {
         commands.extend_from_slice(&WALLET_LOADED_COMMANDS);
+        if identity_loaded {
+            commands.extend_from_slice(&IDENTITY_LOADED_COMMANDS);
+            if identity_top_up_in_progress {
+                commands.push(ScreenCommandKey::new("t", "Continue identity top up"));
+            } else {
+                commands.push(ScreenCommandKey::new("t", "Identity top up"));
+            }
+        } else {
+            if identity_registration_in_progress {
+                commands.push(ScreenCommandKey::new("i", "Continue identity registration"));
+            } else {
+                commands.push(ScreenCommandKey::new("i", "Register identity"));
+            }
+        }
     } else {
         commands.push(ScreenCommandKey::new("a", "Add wallet by private key"));
     }
-
-    if identity_loaded {
-        commands.extend_from_slice(&IDENTITY_LOADED_COMMANDS);
-        if identity_top_up_in_progress {
-            commands.push(ScreenCommandKey::new("t", "Continue identity top up"));
-        } else {
-            commands.push(ScreenCommandKey::new("t", "Identity top up"));
-        }
-    } else {
-        if identity_registration_in_progress {
-            commands.push(ScreenCommandKey::new("i", "Continue identity registration"));
-        } else {
-            commands.push(ScreenCommandKey::new("i", "Register identity"));
-        }
-    }
-
     commands.leak()
 }
 
@@ -368,6 +370,13 @@ impl ScreenController for WalletScreenController {
                 task: Task::Identity(IdentityTask::CopyIdentityId),
                 block: true,
             },
+
+            Event::Key(KeyEvent {
+                code: Key::Char('k'),
+                modifiers: KeyModifiers::NONE,
+            }) if self.identity_loaded => {
+                ScreenFeedback::Form(Box::new(AddIdentityKeyFormController::new()))
+            }
 
             Event::Backend(
                 BackendEvent::AppStateUpdated(AppStateUpdate::LoadedWallet(wallet))

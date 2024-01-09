@@ -5,7 +5,7 @@ mod ui;
 use std::{fs::File, panic, time::Duration};
 
 use crossterm::event::{Event as TuiEvent, EventStream};
-use dash_platform_sdk::SdkBuilder;
+use dash_platform_sdk::{RequestSettings, SdkBuilder};
 use dpp::{identity::accessors::IdentityGettersV0, version::PlatformVersion};
 use futures::{future::OptionFuture, select, FutureExt, StreamExt};
 use tracing_subscriber::EnvFilter;
@@ -63,7 +63,12 @@ async fn main() {
 
     // Setup Platform SDK
     let address_list = config.dapi_address_list();
-
+    let request_settings = RequestSettings {
+        connect_timeout: Some(Duration::from_secs(10)),
+        timeout: Some(Duration::from_secs(10)),
+        retries: None,
+        ban_failed_address: Some(false),
+    };
     let sdk = SdkBuilder::new(address_list)
         .with_version(PlatformVersion::get(1).unwrap())
         .with_core(
@@ -72,6 +77,7 @@ async fn main() {
             &config.core_rpc_user,
             &config.core_rpc_password,
         )
+        .with_settings(request_settings)
         .build()
         .expect("expected to build sdk");
 
