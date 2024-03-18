@@ -919,8 +919,10 @@ pub(crate) async fn run_strategy_task<'s>(
                                                     Ok(wait_response) => {
                                                         if let Some(wait_for_state_transition_result_response::Version::V0(v0_response)) = &wait_response.version {
                                                             let mut actual_block_height: u64 = 0;
+                                                            let mut actual_block_time: u64 = 0;
                                                             if let Some(metadata) = &v0_response.metadata {
                                                                 actual_block_height = metadata.height;
+                                                                actual_block_time = metadata.time_ms;
                                                                 success_count += 1;
                                                                 info!("Successfully processed state transition {} ({}) for block {} (Actual block height: {})", st_queue_index, transition_type, current_block_info.height, actual_block_height);
                                                                 // Sleep because we need to give the chain state time to update revisions
@@ -936,6 +938,7 @@ pub(crate) async fn run_strategy_task<'s>(
                                                                     if verify_proofs {
                                                                         let verified = Drive::verify_state_transition_was_executed_with_proof(
                                                                             &transition_clone,
+                                                                            actual_block_time,
                                                                             proof.grovedb_proof.as_slice(),
                                                                             &|_| Ok(None),
                                                                             sdk.version(),                                                            
@@ -1060,10 +1063,9 @@ pub(crate) async fn run_strategy_task<'s>(
                                             Ok(wait_response) => {
                                                 Some(if let Some(wait_for_state_transition_result_response::Version::V0(v0_response)) = &wait_response.version {
                                                     if let Some(metadata) = &v0_response.metadata {
-                                                        let actual_block_height = metadata.height;
                                                         info!(
                                                             "Successfully processed state transition {} ({}) for block {} (Actual block height: {})",
-                                                            index + 1, transition.name(), current_block_info.height, actual_block_height
+                                                            index + 1, transition.name(), current_block_info.height, metadata.height
                                                         );
 
                                                         // Log the Base58 encoded IDs of any created Identities
@@ -1089,6 +1091,7 @@ pub(crate) async fn run_strategy_task<'s>(
                                                                         Some(data_contract) => {
                                                                             Drive::verify_state_transition_was_executed_with_proof(
                                                                                 &transition,
+                                                                                metadata.time_ms,
                                                                                 proof.grovedb_proof.as_slice(),
                                                                                 &|_| Ok(Some(data_contract.clone().into())),
                                                                                 sdk.version(),
@@ -1099,6 +1102,7 @@ pub(crate) async fn run_strategy_task<'s>(
                                                                 } else {
                                                                     Drive::verify_state_transition_was_executed_with_proof(
                                                                         &transition,
+                                                                        metadata.time_ms,
                                                                         proof.grovedb_proof.as_slice(),
                                                                         &|_| Ok(None),
                                                                         sdk.version(),
@@ -1107,7 +1111,7 @@ pub(crate) async fn run_strategy_task<'s>(
 
                                                                 match verified {
                                                                     Ok(_) => {
-                                                                        info!("Verified proof for state transition {} ({}) for block {} (Actual block height: {})", index + 1, transition_type, current_block_info.height, actual_block_height);
+                                                                        info!("Verified proof for state transition {} ({}) for block {} (Actual block height: {})", index + 1, transition_type, current_block_info.height, metadata.height);
                                                                         
                                                                         // If a data contract was registered, add it to
                                                                         // known_contracts
