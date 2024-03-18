@@ -10,19 +10,19 @@ strum = { version = "0.26.1", features = ["derive"] }
 tui-realm-stdlib = "1.3.1"
 tuirealm = "1.9.1"
 bs58 = "0.5.0"
-dpp = { path = "../platform/packages/rs-dpp", features = ["client"]}
-rs-sdk = { path = "../platform/packages/rs-sdk"}
-drive = { path = "../platform/packages/rs-drive" }
+dpp = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554", features = ["client"]}
+rs-sdk = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554"}
+drive = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554" }
 thiserror = "1"
 serde = "1.0.197"
 serde_json = "1.0.114"
 toml = { version = "0.8.10", features = ["display"] }
-dapi-grpc = { path = "../platform/packages/dapi-grpc", features = ["client"]}
-rs-dapi-client = { path = "../platform/packages/rs-dapi-client"}
+dapi-grpc = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554", features = ["client"]}
+rs-dapi-client = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554"}
 tokio = { version = "1.36.0", features = ["full"] }
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
-strategy-tests = {path = "../platform/packages/strategy-tests"}
-simple-signer = {path = "../platform/packages/simple-signer"}
+strategy-tests = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554"}
+simple-signer = { git = "https://github.com/dashpay/platform", rev = "ea18e910fb3729b1c556f4cd44122f7cc4de8554"}
 reqwest = { version = "0.11.24", features = ["json"] }
 hex = { version = "0.4.3"}
 itertools = "0.12.1"
