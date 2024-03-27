@@ -38,7 +38,7 @@ impl FormController for StrategyIdentityInsertsFormController {
                 task: Task::Strategy(StrategyTask::SetIdentityInserts {
                     strategy_name: self.selected_strategy.clone(),
                     identity_inserts_frequency: Frequency {
-                        times_per_block_range: 1..count + 1,
+                        times_per_block_range: count..count + 1,
                         chance_per_block: Some(chance),
                     },
                 }),

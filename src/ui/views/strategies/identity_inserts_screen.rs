@@ -148,7 +148,7 @@ impl ScreenController for IdentityInsertsScreenController {
             };
 
             let identity_inserts_text = format!(
-                "Identity inserts:\nTimes per block: 1..{}; Chance per block: {}",
+                "Identity inserts:\nTimes per block: {}; Chance per block: {}",
                 times_per_block_display,
                 strategy
                     .identities_inserts

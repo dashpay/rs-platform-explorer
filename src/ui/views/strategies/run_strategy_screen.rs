@@ -94,19 +94,21 @@ impl ScreenController for RunStrategyScreenController {
                         start_block_height,
                         success_count,
                         transition_count,
+                        rate,
                         run_time,
                         dash_spent_identity,
                         dash_spent_wallet,
                     } => {
                         format!(
                             "Strategy '{}' completed:\n\nState transitions attempted: {}\nState \
-                             transitions succeeded: {}\nNumber of blocks: {}\nRun time: \
-                             {:?}\nDash spent (Identity): {}\nDash spent (Wallet): {}",
+                             transitions succeeded: {}\nNumber of blocks (or seconds): {}\nRun time: \
+                             {:?}\nAttempted rate (approx): {} txs/s\nDash spent (Identity): {}\nDash spent (Wallet): {}",
                             strategy_name,
                             transition_count,
                             success_count,
                             (final_block_height - start_block_height),
                             run_time,
+                            rate,
                             dash_spent_identity,
                             dash_spent_wallet,
                         )

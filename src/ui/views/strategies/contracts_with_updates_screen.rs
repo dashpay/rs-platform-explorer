@@ -15,7 +15,9 @@ use tuirealm::{
 };
 use walkdir::WalkDir;
 
-use super::contracts_with_updates::ContractsWithUpdatesFormController;
+use super::contracts_with_updates::{
+    ContractsWithUpdatesFormController, RandomContractsFormController,
+};
 use crate::{
     backend::{AppState, AppStateUpdate, BackendEvent, StrategyTask, Task},
     ui::screen::{
@@ -25,10 +27,12 @@ use crate::{
     Event,
 };
 
-const COMMAND_KEYS: [ScreenCommandKey; 3] = [
+const COMMAND_KEYS: [ScreenCommandKey; 5] = [
     ScreenCommandKey::new("q", "Back to Strategy"),
-    ScreenCommandKey::new("a", "Add"),
+    ScreenCommandKey::new("s", "Add specific"),
+    ScreenCommandKey::new("x", "Add x random"),
     ScreenCommandKey::new("r", "Remove last"),
+    ScreenCommandKey::new("c", "Clear all"),
 ];
 
 pub(crate) struct ContractsWithUpdatesScreenController {
@@ -138,14 +142,31 @@ impl ScreenController for ContractsWithUpdatesScreenController {
                 modifiers: KeyModifiers::NONE,
             }) => ScreenFeedback::PreviousScreen,
             Event::Key(KeyEvent {
-                code: Key::Char('a'),
+                code: Key::Char('s'),
                 modifiers: KeyModifiers::NONE,
             }) => {
-                let strategy_name_clone = self.strategy_name.clone(); // Clone strategy_name before borrowing self
+                let strategy_name_clone = self.strategy_name.clone();
                 if let Some(strategy_name) = strategy_name_clone {
                     self.update_supporting_contracts_sync();
 
                     ScreenFeedback::Form(Box::new(ContractsWithUpdatesFormController::new(
+                        strategy_name,
+                        self.known_contracts.clone(),
+                        self.supporting_contracts.clone(),
+                    )))
+                } else {
+                    ScreenFeedback::None
+                }
+            }
+            Event::Key(KeyEvent {
+                code: Key::Char('x'),
+                modifiers: KeyModifiers::NONE,
+            }) => {
+                let strategy_name_clone = self.strategy_name.clone();
+                if let Some(strategy_name) = strategy_name_clone {
+                    self.update_supporting_contracts_sync();
+
+                    ScreenFeedback::Form(Box::new(RandomContractsFormController::new(
                         strategy_name,
                         self.known_contracts.clone(),
                         self.supporting_contracts.clone(),
@@ -163,6 +184,19 @@ impl ScreenController for ContractsWithUpdatesScreenController {
                         task: Task::Strategy(StrategyTask::RemoveLastContract(
                             strategy_name.clone(),
                         )),
+                        block: false,
+                    }
+                } else {
+                    ScreenFeedback::None
+                }
+            }
+            Event::Key(KeyEvent {
+                code: Key::Char('c'),
+                modifiers: KeyModifiers::NONE,
+            }) => {
+                if let Some(strategy_name) = &self.strategy_name {
+                    ScreenFeedback::Task {
+                        task: Task::Strategy(StrategyTask::ClearContracts(strategy_name.clone())),
                         block: false,
                     }
                 } else {

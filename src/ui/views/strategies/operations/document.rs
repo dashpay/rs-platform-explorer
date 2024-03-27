@@ -47,7 +47,11 @@ impl StrategyOpDocumentFormController {
         contract_names.extend(supporting_contracts.keys().cloned());
 
         // Remove duplicates
-        let contract_names: Vec<String> = contract_names.into_iter().collect::<std::collections::HashSet<_>>().into_iter().collect();
+        let contract_names: Vec<String> = contract_names
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
 
         let action_types = vec![
             "Insert Random".to_string(),
@@ -80,7 +84,9 @@ impl FormController for StrategyOpDocumentFormController {
     fn on_event(&mut self, event: KeyEvent) -> FormStatus {
         match self.input.on_event(event) {
             InputStatus::Done((contract_name, action_type, times_per_block, chance_per_block)) => {
-                let selected_contract = self.known_contracts.get(&contract_name)
+                let selected_contract = self
+                    .known_contracts
+                    .get(&contract_name)
                     .or_else(|| self.supporting_contracts.get(&contract_name))
                     .expect("Contract name not found in known_contracts or supporting_contracts.");
 
@@ -111,7 +117,7 @@ impl FormController for StrategyOpDocumentFormController {
                                 action: action.clone(),
                             }),
                             frequency: Frequency {
-                                times_per_block_range: 1..times_per_block + 1,
+                                times_per_block_range: times_per_block..times_per_block + 1,
                                 chance_per_block: Some(chance_per_block),
                             },
                         },

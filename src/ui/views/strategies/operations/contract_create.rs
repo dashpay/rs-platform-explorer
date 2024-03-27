@@ -18,7 +18,11 @@ use crate::{
 };
 
 pub(super) struct StrategyOpContractCreateFormController {
-    input: ComposedInput<(Field<SelectInput<u16>>, Field<SelectInput<u16>>, Field<SelectInput<f64>>)>,
+    input: ComposedInput<(
+        Field<SelectInput<u16>>,
+        Field<SelectInput<u16>>,
+        Field<SelectInput<f64>>,
+    )>,
     selected_strategy: String,
 }
 
@@ -87,22 +91,24 @@ impl FormController for StrategyOpContractCreateFormController {
         };
 
         match self.input.on_event(event) {
-            InputStatus::Done((num_document_types, times_per_block, chance_per_block)) => FormStatus::Done {
-                task: Task::Strategy(StrategyTask::AddOperation {
-                    strategy_name: self.selected_strategy.clone(),
-                    operation: Operation {
-                        op_type: OperationType::ContractCreate(
-                            random_doc_type_parameters,
-                            1..num_document_types+1,
-                        ),
-                        frequency: Frequency {
-                            times_per_block_range: 1..times_per_block + 1,
-                            chance_per_block: Some(chance_per_block),
+            InputStatus::Done((num_document_types, times_per_block, chance_per_block)) => {
+                FormStatus::Done {
+                    task: Task::Strategy(StrategyTask::AddOperation {
+                        strategy_name: self.selected_strategy.clone(),
+                        operation: Operation {
+                            op_type: OperationType::ContractCreate(
+                                random_doc_type_parameters,
+                                1..num_document_types + 1,
+                            ),
+                            frequency: Frequency {
+                                times_per_block_range: times_per_block..times_per_block + 1,
+                                chance_per_block: Some(chance_per_block),
+                            },
                         },
-                    },
-                }),
-                block: false,
-            },
+                    }),
+                    block: false,
+                }
+            }
             status => status.into(),
         }
     }

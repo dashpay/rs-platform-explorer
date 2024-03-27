@@ -123,3 +123,81 @@ impl FormController for ContractsWithUpdatesFormController {
         2
     }
 }
+
+pub(super) struct RandomContractsFormController {
+    selected_strategy: String,
+    input: ComposedInput<(Field<SelectInput<String>>, Field<SelectInput<u8>>)>,
+}
+
+impl RandomContractsFormController {
+    pub(super) fn new(
+        selected_strategy: String,
+        known_contracts: BTreeMap<String, DataContract>,
+        supporting_contracts: BTreeMap<String, DataContract>,
+    ) -> Self {
+        // Collect contract names from known_contracts
+        let mut contract_names: Vec<String> = known_contracts.keys().cloned().collect();
+
+        // Collect and add names from supporting_contracts, avoiding duplicates
+        let additional_names: Vec<String> = supporting_contracts
+            .keys()
+            .filter(|name| !contract_names.contains(name))
+            .cloned()
+            .collect();
+        contract_names.extend(additional_names);
+
+        // Remove duplicates
+        contract_names.sort();
+        contract_names.dedup();
+
+        Self {
+            selected_strategy,
+            input: ComposedInput::new((
+                Field::new(
+                    "Select a contract for the random variants to be based off of",
+                    SelectInput::new(contract_names),
+                ),
+                Field::new(
+                    "Select the number of variants to create",
+                    SelectInput::new(vec![5, 10, 20, 50, 100]),
+                ),
+            )),
+        }
+    }
+}
+
+impl FormController for RandomContractsFormController {
+    fn on_event(&mut self, event: KeyEvent) -> FormStatus {
+        match self.input.on_event(event) {
+            InputStatus::Done((selected_contract_name, variants)) => FormStatus::Done {
+                task: Task::Strategy(StrategyTask::SetContractsWithUpdatesRandom(
+                    self.selected_strategy.clone(),
+                    selected_contract_name,
+                    variants,
+                )),
+                block: false,
+            },
+            status => status.into(),
+        }
+    }
+
+    fn form_name(&self) -> &'static str {
+        "Random initial contracts for strategy"
+    }
+
+    fn step_view(&mut self, frame: &mut Frame, area: Rect) {
+        self.input.view(frame, area)
+    }
+
+    fn step_name(&self) -> &'static str {
+        self.input.step_name()
+    }
+
+    fn step_index(&self) -> u8 {
+        self.input.step_index()
+    }
+
+    fn steps_number(&self) -> u8 {
+        2
+    }
+}

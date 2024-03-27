@@ -215,7 +215,7 @@ impl ScreenController for OperationsScreenController {
                     op.frequency.times_per_block_range.end
                 };
                 operations_lines.push_str(&format!(
-                    "{:indent$}{}; Times per block: 1..{}, chance per block: {}\n",
+                    "{:indent$}{}; Times per block: {}, chance per block: {}\n",
                     "",
                     op_name,
                     times_per_block_display,

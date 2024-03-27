@@ -226,7 +226,7 @@ fn display_strategy(
     };
 
     let identity_inserts_line = format!(
-        "{:indent$}Times per block: 1..{}; chance per block: {}\n",
+        "{:indent$}Times per block: {}; chance per block: {}\n",
         "",
         times_per_block_display,
         strategy
@@ -279,7 +279,7 @@ fn display_strategy(
             };
 
         operations_lines.push_str(&format!(
-            "{:indent$}{}; Times per block: 1..{}, chance per block: {}\n",
+            "{:indent$}{}; Times per block: {}, chance per block: {}\n",
             "",
             op_name,
             times_per_block_display,

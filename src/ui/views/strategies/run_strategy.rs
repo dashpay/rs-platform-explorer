@@ -8,7 +8,12 @@ use crate::{
 };
 
 pub(super) struct RunStrategyFormController {
-    input: ComposedInput<(Field<SelectInput<u64>>, Field<SelectInput<String>>, Field<SelectInput<String>>)>,
+    input: ComposedInput<(
+        Field<SelectInput<String>>,
+        Field<SelectInput<u64>>,
+        Field<SelectInput<String>>,
+        Field<SelectInput<String>>,
+    )>,
     selected_strategy: String,
 }
 
@@ -17,11 +22,15 @@ impl RunStrategyFormController {
         RunStrategyFormController {
             input: ComposedInput::new((
                 Field::new(
-                    "Number of blocks to run the strategy",
-                    SelectInput::new(vec![10, 20, 50, 100, 500]),
+                    "Execute strategy per block or per second?",
+                    SelectInput::new(vec!["Block".to_string(), "Second".to_string()]),
                 ),
                 Field::new(
-                    "Verify state transition proofs?",
+                    "Number of blocks or seconds to run the strategy",
+                    SelectInput::new(vec![10, 20, 30, 60, 120, 300, 600]),
+                ),
+                Field::new(
+                    "Verify state transition proofs? (Only applies to block mode)",
                     SelectInput::new(vec!["Yes".to_string(), "No".to_string()]),
                 ),
                 Field::new(
@@ -37,26 +46,56 @@ impl RunStrategyFormController {
 impl FormController for RunStrategyFormController {
     fn on_event(&mut self, event: KeyEvent) -> FormStatus {
         match self.input.on_event(event) {
-            InputStatus::Done((num_blocks, verify_proofs, confirm)) => {
+            InputStatus::Done((mode, num_blocks, verify_proofs, confirm)) => {
                 if confirm == "Yes" {
                     if verify_proofs == "Yes" {
-                        FormStatus::Done {
-                            task: Task::Strategy(StrategyTask::RunStrategy(
-                                self.selected_strategy.clone(),
-                                num_blocks,
-                                true
-                            )),
-                            block: true,
-                        }    
+                        if mode == "Block" {
+                            // block-based with proofs
+                            FormStatus::Done {
+                                task: Task::Strategy(StrategyTask::RunStrategy(
+                                    self.selected_strategy.clone(),
+                                    num_blocks,
+                                    true,
+                                    true,
+                                )),
+                                block: true,
+                            }
+                        } else {
+                            // time-based with proofs
+                            FormStatus::Done {
+                                task: Task::Strategy(StrategyTask::RunStrategy(
+                                    self.selected_strategy.clone(),
+                                    num_blocks,
+                                    true,
+                                    false,
+                                )),
+                                block: true,
+                            }
+                        }
                     } else {
-                        FormStatus::Done {
-                            task: Task::Strategy(StrategyTask::RunStrategy(
-                                self.selected_strategy.clone(),
-                                num_blocks,
-                                false
-                            )),
-                            block: true,
-                        }    
+                        if mode == "Block" {
+                            // block-based without proofs
+                            FormStatus::Done {
+                                task: Task::Strategy(StrategyTask::RunStrategy(
+                                    self.selected_strategy.clone(),
+                                    num_blocks,
+                                    false,
+                                    true,
+                                )),
+                                block: true,
+                            }
+                        } else {
+                            // time-based without proofs
+                            FormStatus::Done {
+                                task: Task::Strategy(StrategyTask::RunStrategy(
+                                    self.selected_strategy.clone(),
+                                    num_blocks,
+                                    false,
+                                    false,
+                                )),
+                                block: true,
+                            }
+                        }
                     }
                 } else {
                     FormStatus::Exit
@@ -85,6 +124,6 @@ impl FormController for RunStrategyFormController {
     }
 
     fn steps_number(&self) -> u8 {
-        3
+        4
     }
 }
