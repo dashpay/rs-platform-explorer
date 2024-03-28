@@ -986,7 +986,6 @@ pub async fn run_strategy_task<'s>(
                                                                         wait_for_state_transition_result_response_v0::Result::Error(e) => tracing::error!("{:?}", e),
                                                                         wait_for_state_transition_result_response_v0::Result::Proof(_) => tracing::info!("Proof received but no metadata present so we can't verify it."),
                                                                     }
-                                                                    _ => {}
                                                                 }
                                                             }
                                                           
