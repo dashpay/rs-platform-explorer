@@ -527,13 +527,13 @@ impl SingleKeyWallet {
     }
 
     /// Takes a usize `desired_utxo_count` specifying the desired number of UTXOs one wants the wallet to have
-    /// and splits the existing utxos into that many equally-valued UTXOs.
+    /// and splits the existing utxos into that many (minus one) equally-valued UTXOs plus one UTXO holding leftover value.
     ///
     /// It does so by executing transactions with itself as the sender and receiver, and
     /// the existing UTXOs as the inputs and just having `desired_utxo_count` outputs. Since Dash Core only
     /// allows 24 outputs per transaction, we have to create (`desired_utxo_count` / 24) transactions.
     ///
-    /// Each new UTXO is given a value of ((current_wallet_balance - fee) / desired_utxo_count) where fee is set to 3000
+    /// Each new UTXO is given a value of ((current_wallet_balance - fee) / desired_utxo_count) where fee is set to 1_000_000_000
     pub async fn split_utxos(
         &mut self,
         sdk: &Sdk,
@@ -552,7 +552,7 @@ impl SingleKeyWallet {
             (desired_utxo_count as f64 / MAX_OUTPUTS_PER_TRANSACTION as f64).ceil() as usize;
 
         // Amount to fund each UTXO.
-        // Reserve a buffer of 3000 to make sure we never go over the current balance
+        // Reserve a buffer of 1_000_000_000 credits (0.01 dash) to make sure we never go over the current balance
         let utxo_split_value = (current_wallet_balance - 1_000_000_000) / desired_utxo_count as u64;
 
         // Create and execute the transactions
@@ -575,14 +575,14 @@ impl SingleKeyWallet {
             // Select existing UTXOs from the wallet to be the inputs for the transaction
             let mut total_value_of_tx_inputs: u64 = 0;
             let mut selected_utxos = Vec::new();
-            let mut remaining_utxos_in_wallet_vec: Vec<_> =
+            let mut remaining_utxos_in_wallet_vec: Vec<(&OutPoint, &TxOut)> =
                 remaining_utxos_in_wallet.iter().collect();
             remaining_utxos_in_wallet_vec.sort_by_key(|&(_, txout)| txout.value);
             remaining_utxos_in_wallet_vec.reverse(); // Sort greatest to least value utxo
             for (outpoint, txout) in remaining_utxos_in_wallet_vec.clone() {
                 if total_value_of_tx_inputs >= utxo_split_value * num_utxos_to_create_this_tx as u64
                 {
-                    break; // Selected enough UTXOs
+                    break; // Selected enough UTXOs for this tx
                 }
                 total_value_of_tx_inputs += txout.value;
                 selected_utxos.push(outpoint.clone());

@@ -27,7 +27,6 @@ use dash_sdk::{
 };
 use dpp::identity::SecurityLevel;
 use dpp::{
-    consensus::basic::state_transition,
     dashcore::{psbt::serialize::Serialize, Address, PrivateKey, Transaction},
     identity::{
         accessors::{IdentityGettersV0, IdentitySettersV0},
@@ -76,6 +75,7 @@ pub(super) async fn fetch_identity_by_b58_id(
 #[derive(Debug, Clone, PartialEq)]
 pub enum IdentityTask {
     RegisterIdentity(u64),
+    LoadKnownIdentity(String),
     TopUpIdentity(u64),
     WithdrawFromIdentity(u64),
     Refresh,
@@ -109,11 +109,45 @@ impl AppState {
                     app_state_update,
                 }
             }
+            IdentityTask::LoadKnownIdentity(ref id_string) => {
+                let private_key_map = self.identity_private_keys.lock().await;
+                if !private_key_map.contains_key(&(
+                    Identifier::from_string(&id_string, Encoding::Base58)
+                        .expect("Expected to convert id_string to Identifier"),
+                    0,
+                )) {
+                    return BackendEvent::TaskCompleted {
+                        task: Task::Identity(task),
+                        execution_result: Err(format!(
+                            "The identity ID provided is not in the private keys map"
+                        )),
+                    };
+                }
+                match Identity::fetch(
+                    &sdk,
+                    Identifier::from_string(&id_string, Encoding::Base58)
+                        .expect("Expected to convert id_string to Identifier"),
+                )
+                .await
+                {
+                    Ok(new_identity) => {
+                        let mut loaded_identity_lock = self.loaded_identity.lock().await;
+                        *loaded_identity_lock = new_identity;
+                        BackendEvent::AppStateUpdated(AppStateUpdate::LoadedKnownIdentity(
+                            MutexGuard::map(loaded_identity_lock, |identity| {
+                                identity.as_mut().expect("checked above")
+                            }),
+                        ))
+                    }
+                    Err(e) => BackendEvent::TaskCompleted {
+                        task: Task::Identity(task),
+                        execution_result: Err(e.to_string()),
+                    },
+                }
+            }
             IdentityTask::ClearLoadedIdentity => {
                 let mut loaded_identity = self.loaded_identity.lock().await;
                 *loaded_identity = None;
-                let mut identity_private_keys = self.identity_private_keys.lock().await;
-                identity_private_keys.clear();
                 BackendEvent::TaskCompletedStateChange {
                     task: Task::Identity(task),
                     execution_result: Ok(CompletedTaskPayload::String(

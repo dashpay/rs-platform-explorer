@@ -131,6 +131,7 @@ pub(crate) enum AppStateUpdate<'s> {
     ),
     IdentityRegistrationProgressed, // TODO provide state update details
     LoadedIdentity(MappedMutexGuard<'s, Identity>),
+    LoadedKnownIdentity(MappedMutexGuard<'s, Identity>),
     FailedToRefreshIdentity,
     ClearedLoadedIdentity,
     ClearedLoadedWallet,
@@ -148,8 +149,8 @@ pub(crate) enum StrategyCompletionResult {
         transition_count: u64,
         run_time: Duration,
         init_time: Duration,
-        rate: u64,
-        success_rate: u64,
+        rate: f32,
+        success_rate: f32,
         success_percent: u64,
         dash_spent_identity: f64,
         dash_spent_wallet: f64,
@@ -272,4 +273,8 @@ fn stringify_result_keep_item<T: Serialize, E: Display>(
 
 pub(crate) fn as_toml<T: Serialize>(value: &T) -> String {
     toml::to_string_pretty(&value).unwrap_or("Cannot serialize as TOML".to_owned())
+}
+
+pub(crate) fn as_json_string<T: Serialize>(value: &T) -> String {
+    serde_json::to_string_pretty(&value).unwrap_or("Cannot serialize as json string".to_owned())
 }

@@ -38,7 +38,7 @@ const COMMAND_KEYS: [ScreenCommandKey; 5] = [
     ScreenCommandKey::new("c", "Clear all"),
 ];
 
-pub(crate) struct ContractsWithUpdatesScreenController {
+pub(crate) struct StartContractsScreenController {
     info: Info,
     strategy_name: Option<String>,
     selected_strategy: Option<Strategy>,
@@ -51,9 +51,9 @@ pub(crate) struct ContractsWithUpdatesScreenController {
     strategy_contract_names: BTreeMap<String, Vec<(String, Option<BTreeMap<u64, String>>)>>,
 }
 
-impl_builder!(ContractsWithUpdatesScreenController);
+impl_builder!(StartContractsScreenController);
 
-impl ContractsWithUpdatesScreenController {
+impl StartContractsScreenController {
     pub(crate) async fn new(app_state: &AppState) -> Self {
         let available_strategies_lock = app_state.available_strategies.lock().await;
         let selected_strategy_lock = app_state.selected_strategy.lock().await;
@@ -102,8 +102,11 @@ impl ContractsWithUpdatesScreenController {
             let contract_name = path.file_stem().unwrap().to_str().unwrap().to_string();
 
             if !self.supporting_contracts.contains_key(&contract_name) {
-                if let Ok(contract) = json_document_to_contract(&path, true, platform_version) {
-                    self.supporting_contracts.insert(contract_name, contract);
+                match json_document_to_contract(&path, true, platform_version) {
+                    Ok(contract) => {
+                        self.supporting_contracts.insert(contract_name, contract);
+                    },
+                    Err(e) => tracing::warn!("Unable to convert {contract_name} from json document to contract. Error: {e}"),
                 }
             }
         }
@@ -121,7 +124,7 @@ impl ContractsWithUpdatesScreenController {
     }
 }
 
-impl ScreenController for ContractsWithUpdatesScreenController {
+impl ScreenController for StartContractsScreenController {
     fn name(&self) -> &'static str {
         "Start contracts"
     }
@@ -148,7 +151,7 @@ impl ScreenController for ContractsWithUpdatesScreenController {
                 if let Some(strategy_name) = strategy_name_clone {
                     self.update_supporting_contracts_sync();
 
-                    ScreenFeedback::Form(Box::new(ContractsWithUpdatesFormController::new(
+                    ScreenFeedback::Form(Box::new(StartContractsFormController::new(
                         strategy_name,
                         self.known_contracts.clone(),
                         self.supporting_contracts.clone(),
@@ -272,7 +275,7 @@ impl ScreenController for ContractsWithUpdatesScreenController {
     }
 }
 
-pub(super) struct ContractsWithUpdatesFormController {
+pub(super) struct StartContractsFormController {
     selected_strategy: String,
     known_contracts: BTreeMap<String, DataContract>,
     supporting_contracts: BTreeMap<String, DataContract>,
@@ -280,7 +283,7 @@ pub(super) struct ContractsWithUpdatesFormController {
     input: ComposedInput<(Field<SelectInput<String>>, Field<SelectInput<String>>)>,
 }
 
-impl ContractsWithUpdatesFormController {
+impl StartContractsFormController {
     pub(super) fn new(
         selected_strategy: String,
         known_contracts: BTreeMap<String, DataContract>,
@@ -318,7 +321,7 @@ impl ContractsWithUpdatesFormController {
     }
 }
 
-impl FormController for ContractsWithUpdatesFormController {
+impl FormController for StartContractsFormController {
     fn on_event(&mut self, event: KeyEvent) -> FormStatus {
         match self.input.on_event(event) {
             InputStatus::Done((selected_contract, add_another_answer)) => {

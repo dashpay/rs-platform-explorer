@@ -10,23 +10,23 @@ strum = { version = "0.26.1", features = ["derive"] }
 tui-realm-stdlib = "1.3.1"
 tuirealm = "1.9.1"
 bs58 = "0.5.0"
-dpp = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806", features = [
+dpp = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update", features = [
     "client",
 ] }
-dash-sdk = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806" }
-drive = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806" }
+dash-sdk = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update" }
+drive = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update" }
 thiserror = "1"
 serde = "1.0.197"
 serde_json = "1.0.114"
 toml = { version = "0.8.10", features = ["display"] }
-dapi-grpc = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806", features = [
+dapi-grpc = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update", features = [
     "client",
 ] }
-rs-dapi-client = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806" }
+rs-dapi-client = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update" }
 tokio = { version = "1.36.0", features = ["full"] }
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
-strategy-tests = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806" }
-simple-signer = { git = "https://github.com/dashpay/platform", rev = "63d06f6aaeb140a462e4c8e45a82774fc73ba806" }
+strategy-tests = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update" }
+simple-signer = { git = "https://github.com/dashpay/platform", branch = "feat/public-document-price-update" }
 reqwest = { version = "0.12.3", features = ["json"] }
 hex = { version = "0.4.3" }
 itertools = "0.12.1"

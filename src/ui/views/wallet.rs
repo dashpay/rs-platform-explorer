@@ -1,10 +1,11 @@
 //! Screens and forms related to wallet management.
 
-use dpp::dashcore::psbt::serialize::Serialize;
+use dpp::{dashcore::psbt::serialize::Serialize, platform_value::string_encoding::Encoding};
+use itertools::Itertools;
 
 mod add_identity_key;
 
-use std::ops::Deref;
+use std::{collections::HashSet, ops::Deref};
 
 use tuirealm::{
     event::{Key, KeyEvent, KeyModifiers},
@@ -15,12 +16,13 @@ use tuirealm::{
 use self::add_identity_key::AddIdentityKeyFormController;
 use crate::{
     backend::{
-        identities::IdentityTask, AppState, AppStateUpdate, BackendEvent, Task, Wallet, WalletTask,
+        identities::IdentityTask, state::IdentityPrivateKeysMap, AppState, AppStateUpdate,
+        BackendEvent, Task, Wallet, WalletTask,
     },
     ui::{
         form::{
             parsers::DefaultTextInputParser, FormController, FormStatus, Input, InputStatus,
-            TextInput,
+            SelectInput, TextInput,
         },
         screen::{
             info_display::display_info, utils::impl_builder, widgets::info::Info, ScreenCommandKey,
@@ -30,12 +32,13 @@ use crate::{
     Event,
 };
 
-const WALLET_LOADED_COMMANDS: [ScreenCommandKey; 5] = [
+const WALLET_LOADED_COMMANDS: [ScreenCommandKey; 6] = [
     ScreenCommandKey::new("b", "Refresh wallet utxos and balance"),
     ScreenCommandKey::new("c", "Copy Receive Address"),
     ScreenCommandKey::new("i", "Register identity"),
+    ScreenCommandKey::new("l", "Load known identity"),
     ScreenCommandKey::new("u", "Get more utxos"),
-    ScreenCommandKey::new("m", "Clear loaded wallet"),
+    ScreenCommandKey::new("C-m", "Clear loaded wallet"),
 ];
 
 const IDENTITY_LOADED_COMMANDS: [ScreenCommandKey; 5] = [
@@ -43,7 +46,7 @@ const IDENTITY_LOADED_COMMANDS: [ScreenCommandKey; 5] = [
     ScreenCommandKey::new("w", "Withdraw balance"),
     ScreenCommandKey::new("d", "Copy Identity ID"),
     ScreenCommandKey::new("k", "Add Identity key"),
-    ScreenCommandKey::new("e", "Clear loaded identity"),
+    ScreenCommandKey::new("C-e", "Clear loaded identity"),
 ];
 
 #[memoize::memoize]
@@ -82,6 +85,7 @@ pub(crate) struct WalletScreenController {
     identity_loaded: bool,
     identity_registration_in_progress: bool,
     identity_top_up_in_progress: bool,
+    private_keys_map: IdentityPrivateKeysMap,
 }
 
 impl_builder!(WalletScreenController);
@@ -276,6 +280,10 @@ impl WalletScreenController {
             )
         };
 
+        let private_keys = app_state.identity_private_keys.lock().await;
+        let private_keys_clone = private_keys.clone();
+        drop(private_keys);
+
         Self {
             wallet_info,
             identity_info,
@@ -283,6 +291,7 @@ impl WalletScreenController {
             identity_loaded,
             identity_registration_in_progress,
             identity_top_up_in_progress,
+            private_keys_map: private_keys_clone,
         }
     }
 }
@@ -345,6 +354,13 @@ impl ScreenController for WalletScreenController {
             },
 
             Event::Key(KeyEvent {
+                code: Key::Char('l'),
+                modifiers: KeyModifiers::NONE,
+            }) if self.wallet_loaded => ScreenFeedback::Form(Box::new(
+                LoadKnownIdentityFormController::new(self.private_keys_map.clone()),
+            )),
+
+            Event::Key(KeyEvent {
                 code: Key::Char('w'),
                 modifiers: KeyModifiers::NONE,
             }) if self.identity_loaded => {
@@ -391,7 +407,7 @@ impl ScreenController for WalletScreenController {
 
             Event::Key(KeyEvent {
                 code: Key::Char('e'),
-                modifiers: KeyModifiers::NONE,
+                modifiers: KeyModifiers::CONTROL,
             }) if self.identity_loaded => {
                 self.identity_loaded = false;
                 ScreenFeedback::Task {
@@ -402,7 +418,7 @@ impl ScreenController for WalletScreenController {
 
             Event::Key(KeyEvent {
                 code: Key::Char('m'),
-                modifiers: KeyModifiers::NONE,
+                modifiers: KeyModifiers::CONTROL,
             }) if self.wallet_loaded => {
                 self.wallet_loaded = false;
                 ScreenFeedback::Task {
@@ -456,6 +472,13 @@ impl ScreenController for WalletScreenController {
                 self.identity_loaded = false;
                 ScreenFeedback::Redraw
             }
+
+            Event::Backend(BackendEvent::AppStateUpdated(AppStateUpdate::LoadedKnownIdentity(
+                _,
+            ))) => ScreenFeedback::Task {
+                task: Task::Identity(IdentityTask::Refresh),
+                block: true,
+            },
 
             Event::Backend(BackendEvent::TaskCompletedStateChange {
                 execution_result,
@@ -572,6 +595,57 @@ impl FormController for SplitUTXOsFormController {
 
     fn step_name(&self) -> &'static str {
         "Desired number"
+    }
+
+    fn step_index(&self) -> u8 {
+        0
+    }
+
+    fn steps_number(&self) -> u8 {
+        1
+    }
+}
+
+struct LoadKnownIdentityFormController {
+    input: SelectInput<String>,
+}
+
+impl LoadKnownIdentityFormController {
+    fn new(private_keys_map: IdentityPrivateKeysMap) -> Self {
+        let unique_keys: HashSet<_> = private_keys_map
+            .into_iter()
+            .map(|identity_key_pair| identity_key_pair.0 .0.to_string(Encoding::Base58))
+            .collect();
+
+        let unique_keys_vec: Vec<_> = unique_keys.into_iter().collect();
+
+        Self {
+            input: SelectInput::new(unique_keys_vec),
+        }
+    }
+}
+
+impl FormController for LoadKnownIdentityFormController {
+    fn on_event(&mut self, event: KeyEvent) -> FormStatus {
+        match self.input.on_event(event) {
+            InputStatus::Done(id_string) => FormStatus::Done {
+                task: Task::Identity(IdentityTask::LoadKnownIdentity(id_string)),
+                block: false,
+            },
+            status => status.into(),
+        }
+    }
+
+    fn form_name(&self) -> &'static str {
+        "Load known identity"
+    }
+
+    fn step_view(&mut self, frame: &mut Frame, area: Rect) {
+        self.input.view(frame, area)
+    }
+
+    fn step_name(&self) -> &'static str {
+        "Base58 Identity ID"
     }
 
     fn step_index(&self) -> u8 {

@@ -1,5 +1,6 @@
 //! UI defenitions for selected data contract.
 
+mod broadcast_document;
 mod broadcast_random_documents;
 
 use dpp::{
@@ -13,16 +14,20 @@ use dpp::{
     prelude::DataContract,
 };
 use futures::FutureExt;
+use itertools::Itertools;
 use tuirealm::{
     event::{Key, KeyEvent, KeyModifiers},
     tui::prelude::Rect,
     Frame,
 };
 
-use self::broadcast_random_documents::BroadcastRandomDocumentsCountForm;
+use self::{
+    broadcast_document::BroadcastSpecificDocumentForm,
+    broadcast_random_documents::BroadcastRandomDocumentsCountForm,
+};
 use crate::{
     backend::{
-        as_toml, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
+        as_json_string, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
     },
     ui::{
         form::{
@@ -104,11 +109,19 @@ impl FormController for SelectDocumentTypeFormController {
     }
 }
 
-const COMMANDS: [ScreenCommandKey; 4] = [
+const LOADED_IDENTITY_COMMANDS: [ScreenCommandKey; 5] = [
     ScreenCommandKey::new("q", "Back to Contracts"),
     ScreenCommandKey::new("f", "Query"),
     ScreenCommandKey::new("o", "Query ours"),
-    ScreenCommandKey::new("b", "Broadcast Random Documents"),
+    ScreenCommandKey::new("r", "Broadcast Random Documents"),
+    ScreenCommandKey::new("b", "Broadcast Document"),
+];
+
+const NO_LOADED_IDENTITY_COMMANDS: [ScreenCommandKey; 4] = [
+    ScreenCommandKey::new("q", "Back to Contracts"),
+    ScreenCommandKey::new("f", "Query"),
+    ScreenCommandKey::new("r", "Broadcast Random Documents"),
+    ScreenCommandKey::new("b", "Broadcast Document"),
 ];
 
 pub(super) struct DocumentTypeScreenController {
@@ -136,10 +149,36 @@ impl DocumentTypeScreenController {
             .document_type_for_name(&document_type_name)
             .expect("expected a document type")
             .to_owned_document_type();
-        let document_type_str = as_toml(document_type.properties());
-        let info = Info::new_scrollable(&document_type_str);
+        let document_type_properties_str =
+            match serde_json::to_string_pretty(document_type.properties()) {
+                Ok(string) => format!("========= Properties =========\n\n{}", string),
+                Err(e) => {
+                    tracing::error!(
+                        "Error serializing to json string: {e} properties: {:?}",
+                        document_type.properties()
+                    );
+                    as_json_string(document_type.properties())
+                }
+            };
+        let document_type_indices_str = match serde_json::to_string_pretty(document_type.indices())
+        {
+            Ok(string) => format!("\n========= Indexes =========\n\n{}", string),
+            Err(e) => {
+                tracing::error!(
+                    "Error serializing to json string: {e} indices: {:?}",
+                    document_type.indices()
+                );
+                as_json_string(document_type.indices())
+            }
+        };
+        let document_type_info = format!(
+            "{}\n{}",
+            document_type_properties_str, &document_type_indices_str
+        );
 
-        DocumentTypeScreenController {
+        let info = Info::new_scrollable(&document_type_info);
+
+        Self {
             identity_identifier,
             data_contract,
             data_contract_name,
@@ -160,7 +199,11 @@ impl ScreenController for DocumentTypeScreenController {
     }
 
     fn command_keys(&self) -> &[ScreenCommandKey] {
-        &COMMANDS
+        if self.identity_identifier.is_some() {
+            &LOADED_IDENTITY_COMMANDS
+        } else {
+            &NO_LOADED_IDENTITY_COMMANDS
+        }
     }
 
     fn toggle_keys(&self) -> &[ScreenToggleKey] {
@@ -180,15 +223,29 @@ impl ScreenController for DocumentTypeScreenController {
             }) => ScreenFeedback::Form(Box::new(QueryDocumentTypeFormController::new(
                 self.data_contract.clone(),
                 self.document_type.clone(),
-                None,
+                self.identity_identifier.clone(),
+                false,
+            ))),
+
+            Event::Key(KeyEvent {
+                code: Key::Char('r'),
+                modifiers: KeyModifiers::NONE,
+            }) => ScreenFeedback::Form(Box::new(BroadcastRandomDocumentsCountForm::new(
+                self.data_contract_name.clone(),
+                self.document_type_name.clone(),
             ))),
 
             Event::Key(KeyEvent {
                 code: Key::Char('b'),
                 modifiers: KeyModifiers::NONE,
-            }) => ScreenFeedback::Form(Box::new(BroadcastRandomDocumentsCountForm::new(
+            }) => ScreenFeedback::Form(Box::new(BroadcastSpecificDocumentForm::new(
                 self.data_contract_name.clone(),
                 self.document_type_name.clone(),
+                self.document_type
+                    .properties()
+                    .keys()
+                    .cloned()
+                    .collect_vec(),
             ))),
 
             Event::Key(KeyEvent {
@@ -198,6 +255,7 @@ impl ScreenController for DocumentTypeScreenController {
                 self.data_contract.clone(),
                 self.document_type.clone(),
                 self.identity_identifier.clone(),
+                true,
             ))),
 
             // Forward event to upper part of the screen for scrolls and stuff
@@ -214,11 +272,18 @@ impl ScreenController for DocumentTypeScreenController {
                 task: Task::Document(DocumentTask::QueryDocuments(_)),
                 execution_result: Ok(CompletedTaskPayload::Documents(documents)),
             }) => {
+                let data_contract = self.data_contract.clone();
+                let document_type = self.document_type.clone();
+                let identity_id = self.identity_identifier.clone();
                 let documents = documents.clone();
                 ScreenFeedback::NextScreen(Box::new(move |_| {
                     async move {
-                        Box::new(DocumentsQuerysetScreenController::new(documents))
-                            as Box<dyn ScreenController>
+                        Box::new(DocumentsQuerysetScreenController::new(
+                            data_contract,
+                            document_type,
+                            identity_id,
+                            documents,
+                        )) as Box<dyn ScreenController>
                     }
                     .boxed()
                 }))
@@ -253,7 +318,8 @@ impl ScreenController for DocumentTypeScreenController {
 }
 
 struct QueryDocumentTypeFormController {
-    _document_type: DocumentType,
+    document_type: DocumentType,
+    identity_id: Option<Identifier>,
     input: TextInput<DocumentQueryTextInputParser>,
 }
 
@@ -261,20 +327,22 @@ impl QueryDocumentTypeFormController {
     fn new(
         data_contract: DataContract,
         document_type: DocumentType,
-        ours_query: Option<Identifier>,
+        identity_id: Option<Identifier>,
+        ours_query: bool,
     ) -> Self {
-        let ours_query_part = if let Some(ours_identifier) = ours_query {
+        let ours_query_part = if ours_query && identity_id.is_some() {
             format!(
                 "where `$ownerId` = '{}' ",
-                ours_identifier.to_string(Encoding::Base58)
+                identity_id.unwrap().to_string(Encoding::Base58)
             )
         } else {
             String::default()
         };
         let query = format!("Select * from {} {}", document_type.name(), ours_query_part);
         let parser = DocumentQueryTextInputParser::new(data_contract);
-        QueryDocumentTypeFormController {
-            _document_type: document_type,
+        Self {
+            document_type,
+            identity_id,
             input: TextInput::new_str_value_with_parser(parser, "Document Query", &query),
         }
     }

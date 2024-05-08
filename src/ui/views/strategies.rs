@@ -113,6 +113,9 @@ impl ScreenController for StrategiesScreenController {
                 modifiers: KeyModifiers::NONE,
             }) => {
                 if !self.available_strategies.is_empty() {
+                    self.info =
+                        Info::new_fixed(">Exported strategy to supporting_files/strategy_exports");
+
                     ScreenFeedback::Form(Box::new(ExportStrategyFormController::new(
                         self.available_strategies.clone(),
                     )))

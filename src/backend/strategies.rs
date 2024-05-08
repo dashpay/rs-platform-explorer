@@ -42,6 +42,7 @@ use dpp::{
         PlatformSerializableWithPlatformVersion,
     },
     state_transition::{
+        data_contract_create_transition::DataContractCreateTransition,
         documents_batch_transition::{
             document_base_transition::v0::v0_methods::DocumentBaseTransitionV0Methods,
             document_transition::DocumentTransition, DocumentCreateTransition,
@@ -864,7 +865,7 @@ pub async fn run_strategy_task<'s>(
                     .count();
                 if used_contract_ids.len() + num_contract_create_operations > 0 {
                     tracing::info!(
-                        "Fetching identity nonce and {} identity contract nonces from Platform...",
+                        "Fetching loaded identity nonce and {} identity contract nonces from Platform...",
                         used_contract_ids.len()
                     );
                     let nonce_fetching_time = Instant::now();
@@ -904,7 +905,7 @@ pub async fn run_strategy_task<'s>(
                     let contract_results = join_all(contract_futures).await;
                     contract_nonce_counter = contract_results.into_iter().collect();
                     tracing::info!(
-                        "Took {} seconds to obtain {} identity contract nonces",
+                        "Took {} seconds to obtain the loaded identity nonce and {} identity contract nonces",
                         nonce_fetching_time.elapsed().as_secs(),
                         used_contract_ids.len()
                     );
@@ -1328,15 +1329,17 @@ pub async fn run_strategy_task<'s>(
 
                                 let mut request_settings = RequestSettings::default();
                                 if !block_mode && index != 1 && index != 2 {
+                                    // time mode loading
                                     request_settings.connect_timeout = Some(Duration::from_secs(1));
                                     request_settings.timeout = Some(Duration::from_secs(1));
                                     request_settings.retries = Some(0);
                                 }
-                                if block_mode && index != 1 && index != 2 {
-                                    request_settings.connect_timeout = Some(Duration::from_secs(3));
-                                    request_settings.timeout = Some(Duration::from_secs(3));
-                                    request_settings.retries = Some(1);
-                                }
+                                // if block_mode && index != 1 && index != 2 {
+                                //     // block mode loading
+                                //     request_settings.connect_timeout = Some(Duration::from_secs(3));
+                                //     request_settings.timeout = Some(Duration::from_secs(3));
+                                //     request_settings.retries = Some(1);
+                                // }
 
                                 // Prepare futures for broadcasting independent transitions
                                 let future = async move {
@@ -1379,6 +1382,13 @@ pub async fn run_strategy_task<'s>(
                         // If we're in block mode, or index 1 or 2 of time mode, we're going to wait for state transition results and potentially verify proofs too.
                         // If we're in time mode and index 3+, we're just broadcasting.
                         if block_mode || index == 1 || index == 2 {
+                            let request_settings = RequestSettings {
+                                connect_timeout: Some(Duration::from_secs(3)),
+                                timeout: Some(Duration::from_secs(3)),
+                                retries: Some(1),
+                                ban_failed_address: Some(true),
+                            };
+
                             let mut wait_futures = Vec::new();
                             for (index, result) in broadcast_results.into_iter().enumerate() {
                                 match result {
@@ -1448,7 +1458,7 @@ pub async fn run_strategy_task<'s>(
                                             {
                                                 Ok(wait_request) => {
                                                     wait_request
-                                                        .execute(sdk, RequestSettings::default())
+                                                        .execute(sdk, request_settings)
                                                         .await
                                                 }
                                                 Err(e) => {
@@ -1512,6 +1522,52 @@ pub async fn run_strategy_task<'s>(
                                                                     match verified {
                                                                         Ok(_) => {
                                                                             tracing::info!("Successfully processed and verified proof for state transition {} ({}), {} {} (Actual block height: {})", index + 1, transition_type, mode_string, index, metadata.height);
+
+                                                                            // If a data contract was registered, add it to known_contracts
+                                                                            // Not sure if this is necessary
+                                                                            // I may just have it here because we need it for proof verification
+                                                                            // But maybe we want to add them in the case of no verification as well
+                                                                            if let StateTransition::DataContractCreate(
+                                                                                DataContractCreateTransition::V0(
+                                                                                    data_contract_create_transition,
+                                                                                ),
+                                                                            ) = &transition
+                                                                            {
+                                                                                // Extract the data contract from the transition
+                                                                                let data_contract_serialized =
+                                                                                    &data_contract_create_transition
+                                                                                        .data_contract;
+                                                                                let data_contract_result =
+                                                                                    DataContract::try_from_platform_versioned(
+                                                                                        data_contract_serialized.clone(),
+                                                                                        false,
+                                                                                        &mut vec![],
+                                                                                        PlatformVersion::latest(),
+                                                                                    );
+
+                                                                                match data_contract_result {
+                                                                                    Ok(data_contract) => {
+                                                                                        let mut known_contracts_lock =
+                                                                                            app_state
+                                                                                                .known_contracts
+                                                                                                .lock()
+                                                                                                .await;
+                                                                                        known_contracts_lock.insert(
+                                                                                            data_contract
+                                                                                                .id()
+                                                                                                .to_string(Encoding::Base58),
+                                                                                            data_contract,
+                                                                                        );
+                                                                                    }
+                                                                                    Err(e) => {
+                                                                                        tracing::error!(
+                                                                                            "Error deserializing data \
+                                                                                            contract: {:?}",
+                                                                                            e
+                                                                                        );
+                                                                                    }
+                                                                                }
+                                                                            }
                                                                         }
                                                                         Err(e) => tracing::error!("Error verifying state transition execution proof: {}", e),
                                                                     }
@@ -1705,7 +1761,7 @@ pub async fn run_strategy_task<'s>(
                 drop(loaded_identity_lock);
                 let refresh_result = app_state.refresh_identity(&sdk).await;
                 if let Err(ref e) = refresh_result {
-                    tracing::error!("Failed to refresh identity after running strategy: {:?}", e);
+                    tracing::warn!("Failed to refresh identity after running strategy: {:?}", e);
                 }
 
                 // Attempt to retrieve the final balance from the refreshed identity
@@ -1714,10 +1770,7 @@ pub async fn run_strategy_task<'s>(
                         // Successfully refreshed, now access the balance
                         refreshed_identity_lock.balance()
                     }
-                    Err(_) => {
-                        tracing::error!("Error refreshing identity after running strategy");
-                        initial_balance_identity
-                    }
+                    Err(_) => initial_balance_identity,
                 };
 
                 let dash_spent_identity = (initial_balance_identity as f64
@@ -1742,7 +1795,7 @@ pub async fn run_strategy_task<'s>(
                 }
 
                 // Calculate transactions per second
-                let mut tps = 0;
+                let mut tps: f32 = 0.0;
                 if transition_count
                     > (strategy.start_contracts.len() as u16
                         + strategy.start_identities.number_of_identities as u16)
@@ -1750,10 +1803,10 @@ pub async fn run_strategy_task<'s>(
                     tps = (transition_count
                         - strategy.start_contracts.len() as u16
                         - strategy.start_identities.number_of_identities as u16)
-                        as u64
-                        / (load_run_time)
+                        as f32
+                        / (load_run_time as f32)
                 };
-                let mut successful_tps = 0;
+                let mut successful_tps: f32 = 0.0;
                 if success_count as u16
                     > (strategy.start_contracts.len() as u16
                         + strategy.start_identities.number_of_identities as u16)
@@ -1761,8 +1814,8 @@ pub async fn run_strategy_task<'s>(
                     successful_tps = (success_count
                         - strategy.start_contracts.len()
                         - strategy.start_identities.number_of_identities as usize)
-                        as u64
-                        / (load_run_time)
+                        as f32
+                        / (load_run_time as f32)
                 };
                 let mut success_percent = 0;
                 if success_count as u16
@@ -1804,7 +1857,7 @@ pub async fn run_strategy_task<'s>(
                     tracing::info!(
                         "-----Strategy '{}' completed-----\n\nMode: {}\nState transitions attempted: {}\nState \
                         transitions succeeded: {}\nNumber of loops: {}\nLoad run time: \
-                        {:?} seconds\nInit run time: {} seconds\nAttempted rate (approx): {} txs/s\nSuccessful rate: {} tx/s\nSuccess percentage: {}%\nDash spent (Loaded Identity): {}\nDash spent (Wallet): {}\n",
+                        {:?} seconds\nInit run time: {} seconds\nAttempted rate (approx): {:.2} txs/s\nSuccessful rate: {:.2} tx/s\nSuccess percentage: {}%\nDash spent (Loaded Identity): {}\nDash spent (Wallet): {}\n",
                         strategy_name,
                         mode_string,
                         transition_count,
