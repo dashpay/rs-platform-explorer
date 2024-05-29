@@ -2,7 +2,7 @@
     "$format_version": "0",
     "id": "8MjTnX7JUbGfYYswyuCtHU7ZqcYU9s1fUaNiqD9s5tEw",
     "ownerId": "2QjL594djCH2NyDsn45vd6yQjEDHupMKo7CEGVTHtQxU",
-    "version": 1,
+    "version": 2,
     "documentSchemas": {
         "profile": {
             "type": "object",

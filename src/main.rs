@@ -10,14 +10,19 @@ use rs_platform_explorer::{
     ui::{IdentityBalance, Ui, UiFeedback},
     Event,
 };
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
     // Initialize logger
     let log_file = File::create("explorer.log").expect("create log file");
 
+    let filter = EnvFilter::try_new("info")
+        .unwrap()
+        .add_directive("rs_dapi_client=off".parse().unwrap()); // Turn off all logs from `rs-dapi-client`
+
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter("info")
+        .with_env_filter(filter)
         .with_writer(log_file)
         .with_ansi(false)
         .finish();

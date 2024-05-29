@@ -35,6 +35,13 @@ struct Args {
     blocks: u64,
 
     #[arg(
+        long,
+        default_value_t = 0.0,
+        help = "Specifies the amount to top up identities who run out of credits. Default 0."
+    )]
+    top_up_amount: f64,
+
+    #[arg(
         short,
         long,
         help = "Specifies the minimum amount of Dash the loaded identity should have."
@@ -209,6 +216,9 @@ async fn main() {
             }
         }
     }
+
+    let credit_amount = (args.top_up_amount * 100_000_000_000.0) as u64;
+
     if let Some(test_name) = args.test {
         let block_mode = if args.time_mode { false } else { true };
         backend::strategies::run_strategy_task(
@@ -219,6 +229,7 @@ async fn main() {
                 args.blocks,
                 args.prove,
                 block_mode,
+                credit_amount,
             ),
             &insight,
         )
