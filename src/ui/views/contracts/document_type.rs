@@ -22,7 +22,7 @@ use tuirealm::{
 use self::broadcast_random_documents::BroadcastRandomDocumentsCountForm;
 use crate::{
     backend::{
-        as_toml, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
+        as_json_string, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
     },
     ui::{
         form::{
@@ -136,7 +136,7 @@ impl DocumentTypeScreenController {
             .document_type_for_name(&document_type_name)
             .expect("expected a document type")
             .to_owned_document_type();
-        let document_type_str = as_toml(document_type.properties());
+        let document_type_str = as_json_string(document_type.properties());
         let info = Info::new_scrollable(&document_type_str);
 
         DocumentTypeScreenController {

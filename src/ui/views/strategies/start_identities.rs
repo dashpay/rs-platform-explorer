@@ -181,7 +181,7 @@ impl ScreenController for StartIdentitiesScreenController {
 
 pub(super) struct StrategyStartIdentitiesFormController {
     input: ComposedInput<(
-        Field<TextInput<DefaultTextInputParser<u8>>>,
+        Field<TextInput<DefaultTextInputParser<u16>>>,
         Field<TextInput<DefaultTextInputParser<u8>>>,
         Field<SelectInput<String>>,
     )>,

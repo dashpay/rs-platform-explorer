@@ -1,13 +1,21 @@
 //! Contracts backend.
-use dash_sdk::{platform::Fetch, Sdk};
+use std::sync::Arc;
+
+use dash_sdk::{
+    platform::{DocumentQuery, Fetch},
+    Sdk,
+};
 use dpp::{
-    platform_value::string_encoding::Encoding,
+    data_contract::accessors::v0::DataContractV0Getters,
+    document::{Document, DocumentV0Getters},
+    platform_value::{string_encoding::Encoding, Value},
     prelude::{DataContract, Identifier},
     system_data_contracts::{dashpay_contract, dpns_contract},
 };
+use drive::query::{WhereClause, WhereOperator};
 use tokio::sync::Mutex;
 
-use super::{as_toml, state::KnownContractsMap, AppStateUpdate, BackendEvent, Task};
+use super::{as_json_string, state::KnownContractsMap, AppStateUpdate, BackendEvent, Task};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ContractTask {
@@ -16,9 +24,6 @@ pub(crate) enum ContractTask {
     RemoveContract(String),
     FetchContract(String),
 }
-
-const DASHPAY_CONTRACT_NAME: &str = "dashpay";
-const DPNS_CONTRACT_NAME: &str = "dpns";
 
 pub(super) async fn run_contract_task<'s>(
     sdk: &Sdk,
@@ -31,9 +36,14 @@ pub(super) async fn run_contract_task<'s>(
                 .await
             {
                 Ok(Some(data_contract)) => {
-                    let contract_str = as_toml(&data_contract);
+                    let contract_str = as_json_string(&data_contract);
                     let mut contracts_lock = known_contracts.lock().await;
-                    contracts_lock.insert(DASHPAY_CONTRACT_NAME.to_owned(), data_contract);
+
+                    let contract_name = get_dpns_name(sdk, &data_contract.id())
+                        .await
+                        .unwrap_or_else(|| data_contract.id().to_string(Encoding::Base58));
+
+                    contracts_lock.insert(contract_name, data_contract);
 
                     BackendEvent::TaskCompletedStateChange {
                         task: Task::Contract(task),
@@ -55,9 +65,14 @@ pub(super) async fn run_contract_task<'s>(
             match DataContract::fetch(&sdk, Into::<Identifier>::into(dpns_contract::ID_BYTES)).await
             {
                 Ok(Some(data_contract)) => {
-                    let contract_str = as_toml(&data_contract);
+                    let contract_str = as_json_string(&data_contract);
                     let mut contracts_lock = known_contracts.lock().await;
-                    contracts_lock.insert(DPNS_CONTRACT_NAME.to_owned(), data_contract);
+
+                    let contract_name = get_dpns_name(sdk, &data_contract.id())
+                        .await
+                        .unwrap_or_else(|| data_contract.id().to_string(Encoding::Base58));
+
+                    contracts_lock.insert(contract_name, data_contract);
 
                     BackendEvent::TaskCompletedStateChange {
                         task: Task::Contract(task),
@@ -89,7 +104,7 @@ pub(super) async fn run_contract_task<'s>(
                 .expect("Expected to convert contract_id_string to Identifier");
             match DataContract::fetch(&sdk, id).await {
                 Ok(Some(data_contract)) => {
-                    let contract_str = as_toml(&data_contract);
+                    let contract_str = as_json_string(&data_contract);
                     let mut contracts_lock = known_contracts.lock().await;
                     contracts_lock.insert(contract_id_string.to_string(), data_contract);
 
@@ -110,4 +125,30 @@ pub(super) async fn run_contract_task<'s>(
             }
         }
     }
+}
+
+pub async fn get_dpns_name(sdk: &Sdk, id: &Identifier) -> Option<String> {
+    let dpns_contract =
+        DataContract::fetch(&sdk, Into::<Identifier>::into(dpns_contract::ID_BYTES))
+            .await
+            .ok()??;
+
+    let document_query = DocumentQuery {
+        data_contract: Arc::new(dpns_contract),
+        document_type_name: "domain".to_string(),
+        where_clauses: vec![WhereClause {
+            field: "label".to_string(),
+            operator: WhereOperator::Equal,
+            value: Value::Identifier(id.to_buffer()),
+        }],
+        order_by_clauses: vec![],
+        limit: 1,
+        start: None,
+    };
+
+    let document = Document::fetch(sdk, document_query).await.ok()??;
+    let properties = document.properties();
+    let label = properties.get("label")?;
+
+    Some(label.to_string())
 }

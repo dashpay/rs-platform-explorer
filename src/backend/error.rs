@@ -34,8 +34,12 @@ pub(crate) enum Error {
     IdentityWithdrawalError(String),
     #[error("Identity refresh error: {0}")]
     IdentityRefreshError(String),
+    #[error("Identity error: {0}")]
+    IdentityError(String),
     #[error("Document Signing error: {0}")]
     DocumentSigningError(String),
+    #[error("DPNS error: {0}")]
+    DPNSError(String),
 }
 
 impl From<dpp::platform_value::Error> for Error {

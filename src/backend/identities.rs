@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use clap::Id;
 use dapi_grpc::{
     core::v0::{
         BroadcastTransactionRequest, GetBlockchainStatusRequest, GetTransactionRequest,
@@ -25,18 +26,29 @@ use dash_sdk::{
     },
     Sdk,
 };
-use dpp::identity::SecurityLevel;
 use dpp::{
-    consensus::basic::state_transition,
     dashcore::{psbt::serialize::Serialize, Address, PrivateKey, Transaction},
+    data_contract::{
+        accessors::v0::DataContractV0Getters,
+        document_type::{
+            accessors::DocumentTypeV0Getters,
+            random_document::{CreateRandomDocument, DocumentFieldFillSize, DocumentFieldFillType},
+            v0::DocumentTypeV0,
+        },
+    },
+    data_contracts::dpns_contract,
+    document::{DocumentV0Getters, DocumentV0Setters},
     identity::{
         accessors::{IdentityGettersV0, IdentitySettersV0},
         identity_public_key::{accessors::v0::IdentityPublicKeyGettersV0, v0::IdentityPublicKeyV0},
         KeyType, PartialIdentity, Purpose as KeyPurpose, SecurityLevel as KeySecurityLevel,
     },
-    platform_value::{string_encoding::Encoding, Identifier},
+    platform_value::{string_encoding::Encoding, Bytes32, Identifier},
     prelude::{AssetLockProof, Identity, IdentityPublicKey},
     state_transition::{
+        documents_batch_transition::{
+            methods::v0::DocumentsBatchTransitionMethodsV0, DocumentsBatchTransition,
+        },
         identity_credit_transfer_transition::{
             accessors::IdentityCreditTransferTransitionAccessorsV0,
             IdentityCreditTransferTransition,
@@ -48,10 +60,12 @@ use dpp::{
         public_key_in_creation::v0::IdentityPublicKeyInCreationV0,
         StateTransition,
     },
+    util::{hash::hash_double, strings::convert_to_homograph_safe_chars},
     version::PlatformVersion,
 };
+use dpp::{data_contract::DataContract, identity::SecurityLevel};
 use dpp::{identity::Purpose, ProtocolError};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use rs_dapi_client::{DapiRequestExecutor, RequestSettings};
 use simple_signer::signer::SimpleSigner;
 use tokio::sync::{MappedMutexGuard, MutexGuard};
@@ -87,6 +101,7 @@ pub enum IdentityTask {
     },
     ClearLoadedIdentity,
     TransferCredits(String, f64),
+    RegisterDPNSName(String),
 }
 
 impl AppState {
@@ -321,7 +336,190 @@ impl AppState {
                     }
                 }
             }
+            IdentityTask::RegisterDPNSName(ref name) => {
+                let loaded_identity_lock = self.loaded_identity.lock().await;
+                let identity = match loaded_identity_lock.as_ref() {
+                    Some(identity) => identity,
+                    None => {
+                        return BackendEvent::TaskCompleted {
+                            task: Task::Identity(task),
+                            execution_result: Ok(CompletedTaskPayload::String(
+                                "No loaded identity".to_string(),
+                            )),
+                        }
+                    }
+                };
+                let identity_id = identity.id();
+                drop(loaded_identity_lock);
+
+                let result = self.register_dpns_name(sdk, &identity_id, name).await;
+                let execution_result = result
+                    .as_ref()
+                    .map(|_| "DPNS name registration successful".into())
+                    .map_err(|e| e.to_string());
+                let app_state_update = match result {
+                    Ok(_) => AppStateUpdate::DPNSNameRegistered(name.clone()),
+                    Err(_) => AppStateUpdate::DPNSNameRegistrationFailed,
+                };
+
+                BackendEvent::TaskCompletedStateChange {
+                    task: Task::Identity(task),
+                    execution_result,
+                    app_state_update,
+                }
+            }
         }
+    }
+
+    pub(crate) async fn register_dpns_name(
+        &self,
+        sdk: &Sdk,
+        identifier: &Identifier, // once contract names are enabled, we can use this field
+        name: &str,
+    ) -> Result<(), Error> {
+        let mut rng = StdRng::from_entropy();
+        let platform_version = PlatformVersion::latest();
+
+        let loaded_identity = self.loaded_identity.lock().await;
+        let identity = loaded_identity
+            .as_ref()
+            .ok_or_else(|| Error::IdentityError("No loaded identity".to_string()))?;
+
+        let dpns_contract = match DataContract::fetch(
+            &sdk,
+            Into::<Identifier>::into(dpns_contract::ID_BYTES),
+        )
+        .await
+        {
+            Ok(contract) => contract.unwrap(),
+            Err(e) => return Err(Error::SdkError(e)),
+        };
+        let preorder_document_type = dpns_contract
+            .document_type_for_name("preorder")
+            .map_err(|_| Error::DPNSError("DPNS preorder document type not found".to_string()))?;
+        let domain_document_type = dpns_contract
+            .document_type_for_name("domain")
+            .map_err(|_| Error::DPNSError("DPNS domain document type not found".to_string()))?;
+
+        let entropy = Bytes32::random_with_rng(&mut rng);
+
+        let mut preorder_document = preorder_document_type
+            .random_document_with_identifier_and_entropy(
+                &mut rng,
+                identity.id(),
+                entropy,
+                DocumentFieldFillType::FillIfNotRequired,
+                DocumentFieldFillSize::AnyDocumentFillSize,
+                &platform_version,
+            )?;
+        let mut domain_document = domain_document_type
+            .random_document_with_identifier_and_entropy(
+                &mut rng,
+                identity.id(),
+                entropy,
+                DocumentFieldFillType::FillIfNotRequired,
+                DocumentFieldFillSize::AnyDocumentFillSize,
+                &platform_version,
+            )?;
+
+        let salt: [u8; 32] = rng.gen();
+        let mut salted_domain_buffer: Vec<u8> = vec![];
+        salted_domain_buffer.extend(salt);
+        salted_domain_buffer.extend((convert_to_homograph_safe_chars(name) + ".dash").as_bytes());
+        let salted_domain_hash = hash_double(salted_domain_buffer);
+
+        preorder_document.set("saltedDomainHash", salted_domain_hash.into());
+        domain_document.set("parentDomainName", "dash".into());
+        domain_document.set("normalizedParentDomainName", "dash".into());
+        domain_document.set("label", name.into());
+        domain_document.set(
+            "normalizedLabel",
+            convert_to_homograph_safe_chars(name).into(),
+        );
+        domain_document.set(
+            "records.dashUniqueIdentityId",
+            domain_document.owner_id().into(),
+        );
+        domain_document.set("subdomainRules.allowSubdomains", false.into());
+        domain_document.set("preorderSalt", salt.into());
+
+        let identity_contract_nonce = match sdk
+            .get_identity_contract_nonce(identity.id(), dpns_contract.id(), true, None)
+            .await
+        {
+            Ok(nonce) => nonce,
+            Err(e) => return Err(Error::SdkError(e)),
+        };
+
+        // TODO this is used in strategy tests too. It should be a function.
+        // Get signer from loaded_identity
+        // Convert loaded_identity to SimpleSigner
+        let identity_private_keys_lock = self.identity_private_keys.lock().await;
+        let signer = {
+            let mut new_signer = SimpleSigner::default();
+            let Identity::V0(identity_v0) = &*identity;
+            for (key_id, public_key) in &identity_v0.public_keys {
+                let identity_key_tuple = (identity_v0.id, *key_id);
+                if let Some(private_key_bytes) = identity_private_keys_lock.get(&identity_key_tuple)
+                {
+                    new_signer
+                        .private_keys
+                        .insert(public_key.clone(), private_key_bytes.clone());
+                }
+            }
+            new_signer
+        };
+        drop(identity_private_keys_lock);
+
+        let preorder_transition =
+            DocumentsBatchTransition::new_document_creation_transition_from_document(
+                preorder_document,
+                preorder_document_type,
+                entropy.0,
+                identity
+                    .get_first_public_key_matching(
+                        Purpose::AUTHENTICATION,
+                        HashSet::from([SecurityLevel::CRITICAL]),
+                        HashSet::from([KeyType::ECDSA_SECP256K1, KeyType::BLS12_381]),
+                    )
+                    .expect("expected to get a signing key"),
+                identity_contract_nonce,
+                0,
+                &signer,
+                &platform_version,
+                None,
+                None,
+                None,
+            )?;
+
+        let domain_transition =
+            DocumentsBatchTransition::new_document_creation_transition_from_document(
+                domain_document,
+                domain_document_type,
+                entropy.0,
+                identity
+                    .get_first_public_key_matching(
+                        Purpose::AUTHENTICATION,
+                        HashSet::from([SecurityLevel::CRITICAL]),
+                        HashSet::from([KeyType::ECDSA_SECP256K1, KeyType::BLS12_381]),
+                    )
+                    .expect("expected to get a signing key"),
+                identity_contract_nonce + 1,
+                0,
+                &signer,
+                &platform_version,
+                None,
+                None,
+                None,
+            )?;
+
+        tracing::info!("Broadcasting preorder document...");
+        preorder_transition.broadcast(sdk).await?;
+
+        tracing::info!("Broadcasting domain document...");
+        domain_transition.broadcast(sdk).await?;
+
+        Ok(())
     }
 
     pub(crate) async fn refresh_identity<'s>(

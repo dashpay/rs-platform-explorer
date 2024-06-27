@@ -309,9 +309,9 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9475866fec1451be56a3c2400fd081ff546538961565ccb5b7142cbd22bc7a51"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64ct"
@@ -1273,7 +1273,7 @@ source = "git+https://github.com/dashpay/platform?rev=63d06f6aaeb140a462e4c8e45a
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.0",
+ "base64 0.22.1",
  "bincode",
  "bls-signatures",
  "bs58 0.4.0",
@@ -2425,7 +2425,7 @@ source = "git+https://github.com/fominok/jsonschema-rs?branch=feat-unevaluated-p
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
- "base64 0.22.0",
+ "base64 0.22.1",
  "bytecount",
  "fancy-regex",
  "fraction",
@@ -3173,7 +3173,7 @@ name = "platform-value"
 version = "1.0.0-dev.12"
 source = "git+https://github.com/dashpay/platform?rev=63d06f6aaeb140a462e4c8e45a82774fc73ba806#63d06f6aaeb140a462e4c8e45a82774fc73ba806"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "bincode",
  "bs58 0.5.1",
  "ciborium",
@@ -3639,7 +3639,7 @@ version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "566cafdd92868e0939d3fb961bd0dc25fcfaaed179291093b3d43e6b3150ea10"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3908,7 +3908,7 @@ version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29993a25686778eb88d4189742cd713c9bce943bc54251a33509dc63cbacf73d"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "rustls-pki-types",
 ]
 
@@ -5102,7 +5102,7 @@ version = "2.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d11a831e3c0b56e438a28308e7c810799e3c118417f342d30ecec080105395cd"
 dependencies = [
- "base64 0.22.0",
+ "base64 0.22.1",
  "flate2",
  "log",
  "once_cell",
