@@ -3,6 +3,7 @@
 //! persistence required by backend.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, fs};
 
@@ -28,7 +29,7 @@ use strategy_tests::Strategy;
 use tokio::sync::Mutex;
 use walkdir::{DirEntry, WalkDir};
 
-use super::wallet::Wallet;
+use super::wallet::{add_wallet_by_private_key, Wallet};
 use crate::{backend::insight::InsightAPIClient, config::Config};
 
 const CURRENT_PROTOCOL_VERSION: ProtocolVersion = 1;
@@ -413,7 +414,12 @@ impl AppState {
         let path = config.state_file_path();
 
         let Ok(read_result) = fs::read(path.clone()) else {
-            return AppState::default();
+            let state = AppState::default();
+            if let Some(private_key) = &config.wallet_private_key {
+                let wallet_state = &state.loaded_wallet;
+                add_wallet_by_private_key(&wallet_state, private_key).await;
+            }
+            return state;
         };
 
         let Ok(app_state) = AppState::versioned_deserialize(
@@ -434,8 +440,18 @@ impl AppState {
                 eprintln!("Failed to backup old file: {}", e);
             }
 
-            return AppState::default();
+            let state = AppState::default();
+            if let Some(private_key) = &config.wallet_private_key {
+                let wallet_state = &state.loaded_wallet;
+                add_wallet_by_private_key(&wallet_state, private_key).await;
+            }
+            return state;
         };
+
+        if let Some(private_key) = &config.wallet_private_key {
+            let wallet_state = &app_state.loaded_wallet;
+            add_wallet_by_private_key(&wallet_state, private_key).await;
+        }
 
         // Load supporting contracts
         let platform_version = PlatformVersion::get(CURRENT_PROTOCOL_VERSION).unwrap();
@@ -457,13 +473,6 @@ impl AppState {
             let mut app_state_supporting_contracts = app_state.supporting_contracts.lock().await;
             *app_state_supporting_contracts = supporting_contracts;
         }
-
-        // if let Some(wallet) = app_state.loaded_wallet.lock().await.as_mut() {
-        //     wallet
-        //         .reload_utxos(insight)
-        //         .await
-        //         .expect("expected to reload utxos");
-        // }
 
         app_state
     }
