@@ -13,7 +13,7 @@ use dpp::{
     version::ProtocolVersionVoteCount,
 };
 
-use crate::backend::{as_toml, BackendEvent, Task};
+use crate::backend::{as_json_string, BackendEvent, Task};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PlatformInfoTask {
@@ -115,12 +115,13 @@ pub(super) async fn run_platform_task<'s>(sdk: &Sdk, task: PlatformInfoTask) -> 
         PlatformInfoTask::FetchManyEpochInfo(epoch_num, limit) => {
             let query: LimitQuery<EpochIndex> = LimitQuery {
                 query: epoch_num,
+                start_info: None,
                 limit: Some(limit),
             };
 
             match ExtendedEpochInfo::fetch_many(&sdk, query).await {
                 Ok(epoch_infos) => {
-                    let epoch_info = as_toml(&epoch_infos);
+                    let epoch_info = as_json_string(&epoch_infos);
 
                     BackendEvent::TaskCompleted {
                         task: Task::PlatformInfo(task),

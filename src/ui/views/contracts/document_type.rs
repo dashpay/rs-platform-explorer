@@ -1,7 +1,27 @@
-//! UI defenitions for selected data contract.
+//! UI definitions for selected data contract.
 
 mod broadcast_random_documents;
+pub mod contested_resources;
 
+use self::broadcast_random_documents::BroadcastRandomDocumentsCountForm;
+use crate::{
+    backend::{
+        as_json_string, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
+    },
+    ui::{
+        form::{
+            parsers::DocumentQueryTextInputParser, FormController, FormStatus, Input, InputStatus,
+            SelectInput, TextInput,
+        },
+        screen::{
+            widgets::info::Info, ScreenCommandKey, ScreenController, ScreenFeedback,
+            ScreenToggleKey,
+        },
+        views::documents::DocumentsQuerysetScreenController,
+    },
+    Event,
+};
+use contested_resources::ContestedResourcesScreenController;
 use dpp::{
     data_contract::{
         accessors::v0::DataContractV0Getters,
@@ -17,25 +37,6 @@ use tuirealm::{
     event::{Key, KeyEvent, KeyModifiers},
     tui::prelude::Rect,
     Frame,
-};
-
-use self::broadcast_random_documents::BroadcastRandomDocumentsCountForm;
-use crate::{
-    backend::{
-        as_toml, documents::DocumentTask, AppState, BackendEvent, CompletedTaskPayload, Task,
-    },
-    ui::{
-        form::{
-            parsers::DocumentQueryTextInputParser, FormController, FormStatus, Input, InputStatus,
-            SelectInput, TextInput,
-        },
-        screen::{
-            widgets::info::Info, ScreenCommandKey, ScreenController, ScreenFeedback,
-            ScreenToggleKey,
-        },
-        views::documents::DocumentsQuerysetScreenController,
-    },
-    Event,
 };
 
 pub(super) struct SelectDocumentTypeFormController {
@@ -104,10 +105,11 @@ impl FormController for SelectDocumentTypeFormController {
     }
 }
 
-const COMMANDS: [ScreenCommandKey; 4] = [
+const COMMANDS: [ScreenCommandKey; 5] = [
     ScreenCommandKey::new("q", "Back to Contracts"),
     ScreenCommandKey::new("f", "Query"),
-    ScreenCommandKey::new("o", "Query ours"),
+    ScreenCommandKey::new("o", "Query Ours"),
+    ScreenCommandKey::new("c", "Query Contested Resources"),
     ScreenCommandKey::new("b", "Broadcast Random Documents"),
 ];
 
@@ -136,7 +138,7 @@ impl DocumentTypeScreenController {
             .document_type_for_name(&document_type_name)
             .expect("expected a document type")
             .to_owned_document_type();
-        let document_type_str = as_toml(document_type.properties());
+        let document_type_str = as_json_string(document_type.properties());
         let info = Info::new_scrollable(&document_type_str);
 
         DocumentTypeScreenController {
@@ -184,20 +186,31 @@ impl ScreenController for DocumentTypeScreenController {
             ))),
 
             Event::Key(KeyEvent {
-                code: Key::Char('b'),
-                modifiers: KeyModifiers::NONE,
-            }) => ScreenFeedback::Form(Box::new(BroadcastRandomDocumentsCountForm::new(
-                self.data_contract_name.clone(),
-                self.document_type_name.clone(),
-            ))),
-
-            Event::Key(KeyEvent {
                 code: Key::Char('o'),
                 modifiers: KeyModifiers::NONE,
             }) => ScreenFeedback::Form(Box::new(QueryDocumentTypeFormController::new(
                 self.data_contract.clone(),
                 self.document_type.clone(),
                 self.identity_identifier.clone(),
+            ))),
+
+            Event::Key(KeyEvent {
+                code: Key::Char('c'),
+                modifiers: KeyModifiers::NONE,
+            }) => ScreenFeedback::Task {
+                task: Task::Document(DocumentTask::QueryContestedResources(
+                    self.data_contract.clone(),
+                    self.document_type.clone(),
+                )),
+                block: true,
+            },
+
+            Event::Key(KeyEvent {
+                code: Key::Char('b'),
+                modifiers: KeyModifiers::NONE,
+            }) => ScreenFeedback::Form(Box::new(BroadcastRandomDocumentsCountForm::new(
+                self.data_contract_name.clone(),
+                self.document_type_name.clone(),
             ))),
 
             // Forward event to upper part of the screen for scrolls and stuff
@@ -245,6 +258,25 @@ impl ScreenController for DocumentTypeScreenController {
             ) => {
                 self.info = Info::new_from_result(execution_result);
                 ScreenFeedback::Redraw
+            }
+
+            Event::Backend(BackendEvent::TaskCompleted {
+                task: Task::Document(DocumentTask::QueryContestedResources(_, _)),
+                execution_result: Ok(CompletedTaskPayload::ContestedResources(resources)),
+            }) => {
+                let resources = resources.clone();
+                let data_contract = self.data_contract.clone();
+                let document_type = self.document_type.clone();
+                ScreenFeedback::NextScreen(Box::new(move |_| {
+                    async move {
+                        Box::new(ContestedResourcesScreenController::new(
+                            resources,
+                            data_contract,
+                            document_type,
+                        )) as Box<dyn ScreenController>
+                    }
+                    .boxed()
+                }))
             }
 
             _ => ScreenFeedback::None,

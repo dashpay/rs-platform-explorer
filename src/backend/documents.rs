@@ -1,10 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    iter,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
+use dash_sdk::platform::transition::vote::PutVote;
 use dash_sdk::{
     platform::{transition::put_document::PutDocument, DocumentQuery, FetchMany},
     Sdk,
@@ -19,15 +13,39 @@ use dpp::{
         },
     },
     document::Document,
+    identifier::Identifier,
     identity::{
         accessors::IdentityGettersV0,
         identity_public_key::accessors::v0::IdentityPublicKeyGettersV0, KeyType, Purpose,
+        SecurityLevel,
     },
+    platform_value::Value,
     prelude::{DataContract, Identity, IdentityPublicKey},
+    voting::{
+        contender_structs::ContenderWithSerializedDocument,
+        vote_choices::resource_vote_choice::ResourceVoteChoice,
+        vote_polls::{
+            contested_document_resource_vote_poll::ContestedDocumentResourceVotePoll, VotePoll,
+        },
+        votes::{resource_vote::ResourceVote, Vote},
+    },
 };
+use drive::query::{
+    vote_poll_vote_state_query::{
+        ContestedDocumentVotePollDriveQuery, ContestedDocumentVotePollDriveQueryResultType,
+    },
+    vote_polls_by_document_type_query::VotePollsByDocumentTypeQuery,
+};
+use drive_proof_verifier::types::ContestedResource;
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use rand::{prelude::StdRng, Rng, SeedableRng};
 use simple_signer::signer::SimpleSigner;
+use std::{
+    collections::{BTreeMap, HashSet},
+    iter,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use super::{state::IdentityPrivateKeysMap, AppStateUpdate, CompletedTaskPayload};
 use crate::backend::{error::Error, AppState, BackendEvent, Task};
@@ -40,6 +58,9 @@ pub(crate) enum DocumentTask {
         document_type_name: String,
         count: u16,
     },
+    QueryContestedResources(DataContract, DocumentType),
+    QueryVoteContenders(String, Vec<Value>, String, Identifier),
+    VoteOnContestedResource(VotePoll, ResourceVoteChoice),
 }
 
 impl AppState {
@@ -126,6 +147,159 @@ impl AppState {
                             )),
                         }
                     }
+                }
+            }
+            DocumentTask::QueryVoteContenders(
+                index_name,
+                index_values,
+                document_type_name,
+                contract_id,
+            ) => {
+                let query = ContestedDocumentVotePollDriveQuery {
+                    limit: None,
+                    offset: None,
+                    start_at: None,
+                    vote_poll: ContestedDocumentResourceVotePoll {
+                        index_name: index_name.to_string(),
+                        index_values: index_values.to_vec(),
+                        document_type_name: document_type_name.to_string(),
+                        contract_id: *contract_id,
+                    },
+                    allow_include_locked_and_abstaining_vote_tally: true,
+                    result_type:
+                        ContestedDocumentVotePollDriveQueryResultType::DocumentsAndVoteTally,
+                };
+
+                let contenders =
+                    match ContenderWithSerializedDocument::fetch_many(sdk, query.clone()).await {
+                        Ok(contenders) => contenders,
+                        Err(e) => {
+                            return BackendEvent::TaskCompleted {
+                                task: Task::Document(task),
+                                execution_result: Err(format!("{e}")),
+                            }
+                        }
+                    };
+
+                BackendEvent::TaskCompleted {
+                    task: Task::Document(task),
+                    execution_result: Ok(CompletedTaskPayload::ContestedResourceContenders(
+                        query.vote_poll,
+                        contenders,
+                    )),
+                }
+            }
+            DocumentTask::QueryContestedResources(data_contract, document_type) => {
+                if let Some(contested_index) = document_type.find_contested_index() {
+                    let query = VotePollsByDocumentTypeQuery {
+                        contract_id: data_contract.id(),
+                        document_type_name: document_type.name().to_string(),
+                        index_name: contested_index.name.clone(),
+                        start_at_value: None,
+                        start_index_values: vec!["dash".into()], // hardcoded for dpns
+                        end_index_values: vec![],
+                        limit: None,
+                        order_ascending: true,
+                    };
+
+                    let contested_resources = ContestedResource::fetch_many(sdk, query).await;
+
+                    match contested_resources {
+                        Ok(resources) => BackendEvent::TaskCompleted {
+                            task: Task::Document(task),
+                            execution_result: Ok(CompletedTaskPayload::ContestedResources(
+                                resources,
+                            )),
+                        },
+                        Err(e) => BackendEvent::TaskCompleted {
+                            task: Task::Document(task),
+                            execution_result: Err(format!("{e}")),
+                        },
+                    }
+                } else {
+                    BackendEvent::TaskCompleted {
+                        task: Task::Document(task),
+                        execution_result: Err(
+                            "No contested index for this document type".to_owned()
+                        ),
+                    }
+                }
+            }
+            DocumentTask::VoteOnContestedResource(vote_poll, vote_choice) => {
+                let mut vote = Vote::default();
+
+                // Get signer from loaded_identity
+                // Convert loaded_identity to SimpleSigner
+                let identity_private_keys_lock = self.identity_private_keys.lock().await;
+                let loaded_identity_lock = self
+                    .loaded_identity
+                    .lock()
+                    .await
+                    .clone()
+                    .expect("Expected to get a loaded identity");
+
+                let mut signer = SimpleSigner::default();
+                let Identity::V0(identity_v0) = &loaded_identity_lock;
+                for (key_id, public_key) in &identity_v0.public_keys {
+                    let identity_key_tuple = (identity_v0.id, *key_id);
+                    if let Some(private_key_bytes) =
+                        identity_private_keys_lock.get(&identity_key_tuple)
+                    {
+                        signer
+                            .private_keys
+                            .insert(public_key.clone(), private_key_bytes.clone());
+                    }
+                }
+
+                let voting_public_key = match loaded_identity_lock.get_first_public_key_matching(
+                    Purpose::VOTING,
+                    HashSet::from(SecurityLevel::full_range()),
+                    HashSet::from(KeyType::all_key_types()),
+                ) {
+                    Some(voting_key) => voting_key,
+                    None => {
+                        return BackendEvent::TaskCompleted {
+                            task: Task::Document(task),
+                            execution_result: Err(
+                                "No voting key in the loaded identity. Are you sure it's a masternode identity?".to_string()
+                            ),
+                        };
+                    }
+                };
+
+                match vote {
+                    Vote::ResourceVote(ref mut resource_vote) => match resource_vote {
+                        ResourceVote::V0(ref mut resource_vote_v0) => {
+                            resource_vote_v0.vote_poll = vote_poll.clone();
+                            resource_vote_v0.resource_vote_choice = *vote_choice;
+                            let pro_tx_hash = self
+                                .loaded_identity_pro_tx_hash
+                                .lock()
+                                .await
+                                .expect("Expected a proTxHash in AppState");
+                            match vote
+                                .put_to_platform_and_wait_for_response(
+                                    pro_tx_hash,
+                                    voting_public_key,
+                                    sdk,
+                                    &signer,
+                                    None,
+                                )
+                                .await
+                            {
+                                Ok(_) => BackendEvent::TaskCompleted {
+                                    task: Task::Document(task),
+                                    execution_result: Ok(CompletedTaskPayload::String(
+                                        "Vote cast successfully".to_string(),
+                                    )),
+                                },
+                                Err(e) => BackendEvent::TaskCompleted {
+                                    task: Task::Document(task),
+                                    execution_result: Err(e.to_string()),
+                                },
+                            }
+                        }
+                    },
                 }
             }
         }

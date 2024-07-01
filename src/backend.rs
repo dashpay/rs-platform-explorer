@@ -22,7 +22,9 @@ use dpp::{
     document::Document,
     identity::accessors::IdentityGettersV0,
     prelude::{Identifier, Identity},
+    voting::vote_polls::contested_document_resource_vote_poll::ContestedDocumentResourceVotePoll,
 };
+use drive_proof_verifier::types::{Contenders, ContestedResources};
 use serde::Serialize;
 pub(crate) use state::AppState;
 use strategy_tests::Strategy;
@@ -65,7 +67,10 @@ pub enum Task {
 pub enum CompletedTaskPayload {
     Documents(BTreeMap<Identifier, Option<Document>>),
     Document(Document),
+    Identities(BTreeMap<Identifier, Identity>),
     String(String),
+    ContestedResources(ContestedResources),
+    ContestedResourceContenders(ContestedDocumentResourceVotePoll, Contenders),
 }
 
 impl From<String> for CompletedTaskPayload {
@@ -130,10 +135,13 @@ pub(crate) enum AppStateUpdate<'s> {
     ),
     IdentityRegistrationProgressed, // TODO provide state update details
     LoadedIdentity(MappedMutexGuard<'s, Identity>),
+    LoadedEvonodeIdentity(MappedMutexGuard<'s, Identity>),
     FailedToRefreshIdentity,
     ClearedLoadedIdentity,
     ClearedLoadedWallet,
     IdentityCreditsTransferred,
+    DPNSNameRegistered(String),
+    DPNSNameRegistrationFailed,
 }
 
 /// Represents the result of completing a strategy.
@@ -252,7 +260,7 @@ impl Drop for Backend<'_> {
 
 fn stringify_result<T: Serialize, E: Display>(result: Result<T, E>) -> Result<String, String> {
     match result {
-        Ok(data) => Ok(as_toml(&data)),
+        Ok(data) => Ok(as_json_string(&data)),
         Err(e) => Err(e.to_string()),
     }
 }
@@ -262,7 +270,7 @@ fn stringify_result_keep_item<T: Serialize, E: Display>(
 ) -> Result<(T, String), String> {
     match result {
         Ok(data) => {
-            let toml = as_toml(&data);
+            let toml = as_json_string(&data);
             Ok((data, toml))
         }
         Err(e) => Err(e.to_string()),
@@ -271,4 +279,8 @@ fn stringify_result_keep_item<T: Serialize, E: Display>(
 
 pub(crate) fn as_toml<T: Serialize>(value: &T) -> String {
     toml::to_string_pretty(&value).unwrap_or("Cannot serialize as TOML".to_owned())
+}
+
+pub(crate) fn as_json_string<T: Serialize>(value: &T) -> String {
+    serde_json::to_string_pretty(&value).unwrap_or("Cannot serialize as json string".to_owned())
 }

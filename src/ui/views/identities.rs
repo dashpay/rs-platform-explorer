@@ -21,10 +21,11 @@ use crate::{
     Event,
 };
 
-const COMMAND_KEYS: [ScreenCommandKey; 3] = [
+const COMMAND_KEYS: [ScreenCommandKey; 4] = [
     ScreenCommandKey::new("q", "Back to Main"),
     ScreenCommandKey::new("i", "Get Identity by ID"),
     ScreenCommandKey::new("t", "Transfer credits"),
+    ScreenCommandKey::new("r", "Register DPNS name"),
 ];
 
 pub(crate) struct IdentitiesScreenController {
@@ -81,6 +82,11 @@ impl ScreenController for IdentitiesScreenController {
                 ScreenFeedback::Redraw
             }
 
+            Event::Key(KeyEvent {
+                code: Key::Char('r'),
+                modifiers: KeyModifiers::NONE,
+            }) => ScreenFeedback::Form(Box::new(RegisterDPNSNameFormController::new())),
+
             Event::Key(k) => {
                 let redraw_info = self.info.on_event(k);
                 if redraw_info {
@@ -110,6 +116,23 @@ impl ScreenController for IdentitiesScreenController {
                 task: Task::Identity(IdentityTask::TransferCredits(..)),
                 execution_result,
                 app_state_update: _,
+            }) => {
+                self.info = Info::new_from_result(execution_result);
+                ScreenFeedback::Redraw
+            }
+
+            Event::Backend(BackendEvent::TaskCompletedStateChange {
+                task: Task::Identity(IdentityTask::RegisterDPNSName(..)),
+                execution_result,
+                app_state_update: _,
+            }) => {
+                self.info = Info::new_from_result(execution_result);
+                ScreenFeedback::Redraw
+            }
+
+            Event::Backend(BackendEvent::TaskCompleted {
+                task: Task::Identity(_),
+                execution_result,
             }) => {
                 self.info = Info::new_from_result(execution_result);
                 ScreenFeedback::Redraw
@@ -218,5 +241,51 @@ impl FormController for TransferCreditsFormController {
 
     fn steps_number(&self) -> u8 {
         2
+    }
+}
+
+pub(crate) struct RegisterDPNSNameFormController {
+    input: TextInput<DefaultTextInputParser<String>>,
+}
+
+impl RegisterDPNSNameFormController {
+    fn new() -> Self {
+        RegisterDPNSNameFormController {
+            input: TextInput::new(
+                "DPNS name (example: enter \"something\" if you want \"something.dash\")",
+            ),
+        }
+    }
+}
+
+impl FormController for RegisterDPNSNameFormController {
+    fn on_event(&mut self, event: KeyEvent) -> FormStatus {
+        match self.input.on_event(event) {
+            InputStatus::Done(value) => FormStatus::Done {
+                task: Task::Identity(IdentityTask::RegisterDPNSName(value)),
+                block: true,
+            },
+            status => status.into(),
+        }
+    }
+
+    fn step_view(&mut self, frame: &mut Frame, area: tuirealm::tui::prelude::Rect) {
+        self.input.view(frame, area);
+    }
+
+    fn form_name(&self) -> &'static str {
+        "Register DPNS Name"
+    }
+
+    fn step_name(&self) -> &'static str {
+        "DPNS Name"
+    }
+
+    fn step_index(&self) -> u8 {
+        0
+    }
+
+    fn steps_number(&self) -> u8 {
+        1
     }
 }

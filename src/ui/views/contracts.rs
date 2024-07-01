@@ -1,6 +1,6 @@
 //! Contracts views.
 
-mod document_type;
+pub mod document_type;
 mod fetch_contract;
 mod fetch_system_contract;
 

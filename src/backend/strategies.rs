@@ -731,10 +731,11 @@ pub async fn run_strategy_task<'s>(
                     );
                 }
                 strategy.start_identities = StartIdentities {
-                    number_of_identities: count,
+                    number_of_identities: count as u16,
                     keys_per_identity: keys_count,
                     starting_balances: balance,
                     extra_keys,
+                    hard_coded: vec![],
                 };
                 BackendEvent::AppStateUpdated(AppStateUpdate::SelectedStrategy(
                     strategy_name.clone(),
@@ -760,6 +761,7 @@ pub async fn run_strategy_task<'s>(
                     keys_per_identity: strategy.start_identities.keys_per_identity,
                     starting_balances: balance,
                     extra_keys: strategy.start_identities.extra_keys.clone(),
+                    hard_coded: vec![],
                 };
                 BackendEvent::AppStateUpdated(AppStateUpdate::SelectedStrategy(
                     strategy_name.clone(),
@@ -1152,6 +1154,7 @@ pub async fn run_strategy_task<'s>(
                 let mut new_contract_ids = Vec::new(); // Will capture the ids of newly created data contracts
                 let oks = Arc::new(AtomicUsize::new(0)); // Atomic counter for successful broadcasts
                 let errs = Arc::new(AtomicUsize::new(0)); // Atomic counter for failed broadcasts
+                let mempool_document_counter = BTreeMap::<(Identifier, Identifier), u64>::new(); // Map to track how many documents an identity has in the mempool per contract
 
                 // Now loop through the number of blocks or seconds the user asked for, preparing and processing state transitions
                 while (block_mode && current_block_info.height < (initial_block_info.height + num_blocks_or_seconds + 2)) // +2 because we don't count the first two initialization blocks
@@ -1176,6 +1179,7 @@ pub async fn run_strategy_task<'s>(
                             &mut signer,
                             &mut identity_nonce_counter,
                             &mut contract_nonce_counter,
+                            mempool_document_counter.clone(),
                             &mut rng,
                             &StrategyConfig {
                                 start_block_height: initial_block_info.height,

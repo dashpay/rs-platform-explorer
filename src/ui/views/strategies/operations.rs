@@ -328,7 +328,7 @@ fn format_operation_name(op_type: &StrategyOperationType) -> String {
         }
         .to_string(),
         StrategyOperationType::IdentityTransfer => "IdentityTransfer".to_string(),
-        // Add other operation types as necessary
+        StrategyOperationType::ResourceVote(_) => "ResourceVote".to_string(),
     }
 }
 

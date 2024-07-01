@@ -19,8 +19,8 @@ use crate::{
     },
     ui::{
         form::{
-            parsers::DefaultTextInputParser, FormController, FormStatus, Input, InputStatus,
-            TextInput,
+            parsers::DefaultTextInputParser, ComposedInput, Field, FormController, FormStatus,
+            Input, InputStatus, TextInput,
         },
         screen::{
             info_display::display_info, utils::impl_builder, widgets::info::Info, ScreenCommandKey,
@@ -30,12 +30,13 @@ use crate::{
     Event,
 };
 
-const WALLET_LOADED_COMMANDS: [ScreenCommandKey; 5] = [
+const WALLET_LOADED_COMMANDS: [ScreenCommandKey; 6] = [
     ScreenCommandKey::new("b", "Refresh wallet utxos and balance"),
     ScreenCommandKey::new("c", "Copy Receive Address"),
     ScreenCommandKey::new("i", "Register identity"),
     ScreenCommandKey::new("u", "Get more utxos"),
     ScreenCommandKey::new("m", "Clear loaded wallet"),
+    ScreenCommandKey::new("p", "Load Evonode Identity"),
 ];
 
 const IDENTITY_LOADED_COMMANDS: [ScreenCommandKey; 5] = [
@@ -411,6 +412,13 @@ impl ScreenController for WalletScreenController {
                 }
             }
 
+            Event::Key(KeyEvent {
+                code: Key::Char('p'),
+                modifiers: KeyModifiers::NONE,
+            }) if self.wallet_loaded => {
+                ScreenFeedback::Form(Box::new(LoadEvonodeIdentityFormController::new()))
+            }
+
             Event::Backend(
                 BackendEvent::AppStateUpdated(AppStateUpdate::LoadedWallet(wallet))
                 | BackendEvent::TaskCompletedStateChange {
@@ -460,6 +468,21 @@ impl ScreenController for WalletScreenController {
             Event::Backend(BackendEvent::TaskCompletedStateChange {
                 execution_result,
                 app_state_update: AppStateUpdate::LoadedIdentity(identity),
+                ..
+            }) => {
+                self.identity_loaded = true;
+                self.identity_registration_in_progress = false;
+                if execution_result.is_ok() {
+                    self.identity_info = Info::new_fixed(&display_info(identity.deref()));
+                } else {
+                    self.identity_info = Info::new_from_result(execution_result);
+                }
+                ScreenFeedback::Redraw
+            }
+
+            Event::Backend(BackendEvent::TaskCompletedStateChange {
+                execution_result,
+                app_state_update: AppStateUpdate::LoadedEvonodeIdentity(identity),
                 ..
             }) => {
                 self.identity_loaded = true;
@@ -595,5 +618,61 @@ fn display_wallet(wallet: &Wallet) -> String {
             let utxo_count = single_key_wallet.utxos.len();
             format!("{}\nNumber of UTXOs: {}", description, utxo_count)
         }
+    }
+}
+
+struct LoadEvonodeIdentityFormController {
+    input: ComposedInput<(
+        Field<TextInput<DefaultTextInputParser<String>>>,
+        Field<TextInput<DefaultTextInputParser<String>>>,
+    )>,
+}
+
+impl LoadEvonodeIdentityFormController {
+    fn new() -> Self {
+        Self {
+            input: ComposedInput::new((
+                Field::new(
+                    "proTxHash",
+                    TextInput::new("Enter Evonode proTxHash in base58 format"),
+                ),
+                Field::new(
+                    "Private Key",
+                    TextInput::new("Enter the Evonode private key in WIF format"),
+                ),
+            )),
+        }
+    }
+}
+
+impl FormController for LoadEvonodeIdentityFormController {
+    fn on_event(&mut self, event: KeyEvent) -> FormStatus {
+        match self.input.on_event(event) {
+            InputStatus::Done((pro_tx_hash, private_key)) => FormStatus::Done {
+                task: Task::Identity(IdentityTask::LoadEvonodeIdentity(pro_tx_hash, private_key)),
+                block: true,
+            },
+            status => status.into(),
+        }
+    }
+
+    fn form_name(&self) -> &'static str {
+        "Load Evonode Identity"
+    }
+
+    fn step_view(&mut self, frame: &mut Frame, area: Rect) {
+        self.input.view(frame, area)
+    }
+
+    fn step_name(&self) -> &'static str {
+        self.input.step_name()
+    }
+
+    fn step_index(&self) -> u8 {
+        self.input.step_index()
+    }
+
+    fn steps_number(&self) -> u8 {
+        self.input.steps_number()
     }
 }

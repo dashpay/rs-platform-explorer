@@ -12,7 +12,7 @@ use tuirealm::{
 };
 
 use crate::{
-    backend::as_toml,
+    backend::as_json_string,
     ui::screen::{
         widgets::info::Info, ScreenCommandKey, ScreenController, ScreenFeedback, ScreenToggleKey,
     },
@@ -54,7 +54,7 @@ impl DocumentsQuerysetScreenController {
         let document_view = Info::new_scrollable(
             &current_batch
                 .first_key_value()
-                .map(|(_, v)| as_toml(v))
+                .map(|(_, v)| as_json_string(v))
                 .unwrap_or_else(String::new),
         );
 
@@ -70,9 +70,17 @@ impl DocumentsQuerysetScreenController {
             &self
                 .current_batch
                 .get(self.document_select.state().unwrap_one().unwrap_usize())
-                .map(|v| as_toml(&v))
+                .map(|v| as_json_string(&v))
                 .unwrap_or_else(String::new),
         );
+    }
+
+    fn get_selected_document(&self) -> Option<&Document> {
+        let state = self.document_select.state();
+        let selected_index = state.unwrap_one().unwrap_usize();
+        self.current_batch
+            .get(selected_index)
+            .and_then(|doc| doc.as_ref())
     }
 }
 
@@ -136,6 +144,7 @@ impl ScreenController for DocumentsQuerysetScreenController {
                 self.update_document_view();
                 ScreenFeedback::Redraw
             }
+
             _ => ScreenFeedback::None,
         }
     }
